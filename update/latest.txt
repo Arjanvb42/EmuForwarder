@@ -1,5 +1,5 @@
-build=27
-version=v0.27
+build=28
+version=v0.28
 size=11796480
-fnv=fcc100d42e3a1775
-notes=Test van de Updater
+fnv=55d0368e6a1cd6d5
+notes=Nieuwe iconen; de Updater heet nu EFUpdater (oranje)

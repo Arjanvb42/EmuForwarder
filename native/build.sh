@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds EmuForwarder (TGMA00001) with EmuForwarder Updater (TGMA00002) inside it.
+# Builds EmuForwarder (TGMA00001) with EFUpdater (TGMA00002) inside it.
 set -euo pipefail
 native=$(cd -- "$(dirname -- "$0")" && pwd)
 tools=$(realpath "$native/../../../work/forwarder")
@@ -40,13 +40,13 @@ link() {  # link <output.elf> <objects...>
         -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog -lSceAudioOut \
         -o "$output"
 }
-# A package folder with the font, the system modules and the icon.
+# A package folder with the font, the system modules and the icon: new_stage <folder> <icon.png>
 new_stage() {
     mkdir -p "$1/sce_sys/about" "$1/sce_module" "$1/assets/fonts"
     cp "$oo/samples/font/sce_module/"{libc,libSceFios2}.prx "$1/sce_module/"
     cp "$oo/samples/font/sce_sys/about/right.sprx" "$1/sce_sys/about/"
     cp "$oo/samples/font/assets/fonts/"{Gontserrat-Regular.ttf,OFL.txt} "$1/assets/fonts/"
-    cp "$native/icon0.png" "$1/sce_sys/"
+    cp "$2" "$1/sce_sys/icon0.png"
 }
 # make_package <stage> <content id> <title id> <title> <app version> <output folder>
 make_package() {
@@ -83,18 +83,18 @@ for source in main crash graphics updater; do
     cxx "$native/$source.cpp" "$objects/$source.o"
 done
 
-# EmuForwarder Updater (TGMA00002).
+# EFUpdater (TGMA00002).
 updater_stage="$work/updater"
-new_stage "$updater_stage"
+new_stage "$updater_stage" "$native/icons/efupdater.png"
 link "$objects/updater.elf" "$objects/updater.o" "$objects/graphics.o" "$objects/sqlite3.o"
 "$bin/create-fself" -in "$objects/updater.elf" -out "$objects/updater.oelf" \
     --eboot "$updater_stage/eboot.bin" --paid 0x3800000000000011
-make_package "$updater_stage" IV0000-TGMA00002_00-EMUFWDUPDATER000 TGMA00002 "EmuForwarder Updater" \
+make_package "$updater_stage" IV0000-TGMA00002_00-EMUFWDUPDATER000 TGMA00002 "EFUpdater" \
     "$updater_ver" "$work/updater-out"
 
 # EmuForwarder (TGMA00001), with the Updater's package inside.
 stage="$work/app"
-new_stage "$stage"
+new_stage "$stage" "$native/icons/emuforwarder.png"
 cp "$work/updater-out/IV0000-TGMA00002_00-EMUFWDUPDATER000.pkg" "$stage/updater.pkg"
 link "$objects/app.elf" "$objects/main.o" "$objects/crash.o" "$objects/graphics.o" "$objects/sqlite3.o" "$objects/vorbis.o"
 cp "$objects/app.elf" "$out/app.elf"

@@ -5,7 +5,7 @@ EmuForwarder maakt tegels op het home screen van je PS4 die een game meteen in e
 ## Installeren en bijwerken
 
 - **Eerste keer:** download [`update/EmuForwarder.pkg`](update/EmuForwarder.pkg) en installeer hem via **GoldHEN → Package Installer**.
-- **Updates:** bij het starten kijkt EmuForwarder op GitHub (`update/latest.txt`) of er een nieuwere versie is. Kies je **Downloaden**, dan zet hij het pakket in `/data/pkg`. Sluit de app en open **EmuForwarder Updater** op je home screen: die verwijdert de oude versie en installeert de nieuwe in één keer. Je instellingen, iconen en muziek blijven bewaard. EmuForwarder zet de Updater zelf op je PS4. Je hebt geen pc of FTP nodig.
+- **Updates:** bij het starten kijkt EmuForwarder op GitHub (`update/latest.txt`) of er een nieuwere versie is. Kies je **Downloaden**, dan zet hij het pakket in `/data/pkg`. Sluit de app en open **EFUpdater** (het oranje icoon) op je home screen: die verwijdert de oude versie en installeert de nieuwe in één keer. Je instellingen, iconen en muziek blijven bewaard. EmuForwarder zet EFUpdater zelf op je PS4. Je hebt geen pc of FTP nodig.
 - Zelf zoeken of het automatisch zoeken uitzetten: **Vierkant → Instellingen**.
 - **Nieuwe versie uitbrengen (pc):** `./publiceer.sh "wat er nieuw is"`. Dat verhoogt `native/VERSION`, bouwt het pakket en zet het op GitHub, voor iedereen tegelijk.
 - **Achtergrondmuziek:** zet je eigen `.ogg`- of `.wav`-bestanden (16-bit) in `/data/PS4Tegelmaker/muziek/`. Aan/uit en volume staan onder Instellingen.

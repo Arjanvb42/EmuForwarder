@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bouwt EmuForwarder en zet het pakket op GitHub. Elke PS4 met EmuForwarder ziet de update bij het
-# starten en downloadt het pakket naar /data/pkg; "EmuForwarder Updater" installeert het.
+# starten en downloadt het pakket naar /data/pkg; EFUpdater installeert het.
 #   ./publiceer.sh "wat er nieuw is"
 # Het versienummer staat in native/VERSION en gaat er elke keer 1 omhoog.
 set -euo pipefail

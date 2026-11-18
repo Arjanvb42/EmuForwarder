@@ -512,7 +512,7 @@ static void install_update()
         return;
     }
     snprintf(status, sizeof(status),
-             "%s staat klaar. Sluit EmuForwarder en open \"EmuForwarder Updater\" op je home screen.",
+             "%s staat klaar. Sluit EmuForwarder en open EFUpdater (oranje) op je home screen.",
              update::latest.version.c_str());
 }
 
@@ -525,7 +525,7 @@ static void open_name_question()
     menu.actions = {ConfirmTileAction, RenameAction, CancelAction};
 }
 
-// EmuForwarder Updater (TGMA00002) comes inside this package; install it when it is missing or older.
+// EFUpdater (TGMA00002) comes inside this package; install it when it is missing or older.
 static void ensure_updater()
 {
     const std::string have = sys::installed_version("TGMA00002");
@@ -538,15 +538,15 @@ static void ensure_updater()
         return;
     }
     std::string error;
-    snprintf(status, sizeof(status), "EmuForwarder Updater installeren...");
+    snprintf(status, sizeof(status), "EFUpdater installeren...");
     draw();
-    const sys::Install result = sys::install(Copy, "TGMA00002", "EmuForwarder Updater", error, [](int percent) {
-        snprintf(status, sizeof(status), "EmuForwarder Updater installeren... %d%%", percent);
+    const sys::Install result = sys::install(Copy, "TGMA00002", "EFUpdater", error, [](int percent) {
+        snprintf(status, sizeof(status), "EFUpdater installeren... %d%%", percent);
         draw();
     });
     unlink(Copy);
-    snprintf(status, sizeof(status), result == sys::Install::Failed ? "EmuForwarder Updater installeren lukte niet (%s)."
-                                                                    : "EmuForwarder Updater staat op je home screen.",
+    snprintf(status, sizeof(status), result == sys::Install::Failed ? "EFUpdater installeren lukte niet (%s)."
+                                                                    : "EFUpdater staat op je home screen.",
              error.c_str());
 }
 

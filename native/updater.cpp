@@ -1,4 +1,4 @@
-// EmuForwarder Updater (TGMA00002): installs a downloaded EmuForwarder package over the installed
+// EFUpdater (TGMA00002): installs a downloaded EmuForwarder package over the installed
 // app. EmuForwarder can't do that itself: the PS4 only installs a full package after the old one is
 // removed, and an app can't remove itself while it runs. (A patch package, like a game update,
 // would install over it, but the toolchain builds patches the PS4 refuses: "unable to install
@@ -30,7 +30,7 @@ static const Color Background{14, 16, 26}, Text{235, 238, 245}, Dim{150, 156, 17
 static void show(const char *title, const char *line1, const char *line2 = "", int percent = -1)
 {
     scene->DrawRectangle(0, 0, 1920, 1080, Background);
-    scene->DrawText(const_cast<char *>("EmuForwarder Updater"), font_body, 160, 200, Background, Dim);
+    scene->DrawText(const_cast<char *>("EFUpdater"), font_body, 160, 200, Background, Dim);
     scene->DrawText(const_cast<char *>(title), font_title, 160, 330, Background, Text);
     scene->DrawText(const_cast<char *>(line1), font_body, 160, 440, Background, Text);
     scene->DrawText(const_cast<char *>(line2), font_body, 160, 500, Background, Dim);

@@ -3,7 +3,7 @@
 // to /data/pkg. One push to GitHub reaches every PS4 that has the app; no FTP needed.
 //
 // Installing: the PS4 only installs a full package after the old one is removed, and an app can't
-// remove itself while it runs. EmuForwarder Updater (TGMA00002, updater.cpp, installed by
+// remove itself while it runs. EFUpdater (TGMA00002, updater.cpp, installed by
 // EmuForwarder itself) removes the old EmuForwarder and installs the new one in one go.
 // (A patch package would install over it, but the toolchain builds patches the PS4 refuses.)
 //
