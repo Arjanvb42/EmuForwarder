@@ -1,5 +1,5 @@
-build=24
-version=v0.24
+build=25
+version=v0.25
 size=5111808
-fnv=6eb8562f46749610
-notes=Updates installeren over de oude versie heen
+fnv=2f9b5b17be617dac
+notes=Test: update over de app heen
