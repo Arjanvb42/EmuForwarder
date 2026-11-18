@@ -1,4 +1,5 @@
 #pragma once
+#include "lang.h"
 // Artwork downloads for EmuForwarder: plain HTTP (both sources serve it), DNS through the
 // PS4 resolver. GameCube discs use GameTDB, Retrocade games use the libretro thumbnails.
 
@@ -147,8 +148,8 @@ static std::vector<ArtSource> gametdb_sources(const char *disc)
 {
     const char *preferred = gametdb_region(disc[3]);
     const char *regions[] = {preferred, "EN", "US"};
-    const char *kinds[][2] = {{"cover", "hoes"}, {"coverfullHQ", "volledige hoes HQ"},
-                              {"coverfull", "volledige hoes"}, {"cover3D", "3D-hoes"}, {"disc", "disc"}};
+    const char *kinds[][2] = {{"cover", TR("cover", "hoes")}, {"coverfullHQ", TR("full cover HQ", "volledige hoes HQ")},
+                              {"coverfull", TR("full cover", "volledige hoes")}, {"cover3D", TR("3D cover", "3D-hoes")}, {"disc", "disc"}};
     std::vector<ArtSource> sources;
     for (auto &kind : kinds)
         for (const char *region : regions) {
@@ -193,7 +194,7 @@ static std::vector<ArtSource> libretro_sources(const char *folder, const char *r
         if (strchr("&*/:`<>?\\|\"", c))
             c = '_';
     const char *kinds[][2] = {{"Named_Boxarts", "boxart"}, {"Named_Logos", "logo"},
-                              {"Named_Titles", "titelscherm"}, {"Named_Snaps", "screenshot"}};
+                              {"Named_Titles", TR("title screen", "titelscherm")}, {"Named_Snaps", "screenshot"}};
     for (auto &kind : kinds)
         sources.push_back({std::string("libretro ") + kind[1], "thumbnails.libretro.com",
                            "/" + encode(system) + "/" + kind[0] + "/" + encode(name) + ".png"});

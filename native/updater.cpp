@@ -1,3 +1,4 @@
+#include "lang.h"
 // EFUpdater (TGMA00002): installs a downloaded EmuForwarder package over the installed
 // app. EmuForwarder can't do that itself: the PS4 only installs a full package after the old one is
 // removed, and an app can't remove itself while it runs. (A patch package, like a game update,
@@ -88,6 +89,7 @@ int main()
 {
     mkdir("/data/PS4Tegelmaker", 0777);
     sys::log("Updater " EF_VERSION " start");
+    lang::load();
     scene = new Scene2D(1920, 1080, 4);
     if (!scene->Init(0x4000000, 2))
         return 1;
@@ -113,7 +115,7 @@ int main()
             OrbisPadData input{};
             return scePadReadState(pad, &input) >= 0 && (input.buttons & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE));
         });
-    show("Zoeken...", "Naar een nieuwe EmuForwarder in /data/pkg");
+    show(TR("Searching...", "Zoeken..."), TR("For a new EmuForwarder in /data/pkg", "Naar een nieuwe EmuForwarder in /data/pkg"));
 
     std::string version;
     std::string package;
@@ -124,29 +126,29 @@ int main()
     const std::string installed = sys::installed_version("TGMA00001");
     sys::log("updater: pakket %s (%s), geinstalleerd %s", package.c_str(), version.c_str(), installed.c_str());
     if (package.empty() || (!installed.empty() && installed >= version)) {
-        show("Geen update", "Er staat geen nieuwere EmuForwarder in /data/pkg.",
-             "Kies in EmuForwarder: Vierkant > Instellingen > updates zoeken.  X = sluiten");
+        show(TR("No update", "Geen update"), TR("There's no newer EmuForwarder in /data/pkg.", "Er staat geen nieuwere EmuForwarder in /data/pkg."),
+             TR("In EmuForwarder: Square > Settings > check for updates.  X = close", "Kies in EmuForwarder: Vierkant > Instellingen > updates zoeken.  X = sluiten"));
         wait_for_cross(pad);
         sceSystemServiceLoadExec("exit", NULL);
         return 0;
     }
     char line[160];
-    snprintf(line, sizeof(line), "Van %s naar %s. Sluit EmuForwarder als hij nog open staat.",
+    snprintf(line, sizeof(line), TR("From %s to %s. Close EmuForwarder if it's still open.", "Van %s naar %s. Sluit EmuForwarder als hij nog open staat."),
              installed.empty() ? "-" : installed.c_str(), version.c_str());
-    show("EmuForwarder bijwerken", line, "", 0);
+    show(TR("Updating EmuForwarder", "EmuForwarder bijwerken"), line, "", 0);
     std::string error;
     const sys::Install result = sys::install(package.c_str(), "TGMA00001", "EmuForwarder", error, [&](int percent) {
-        show("EmuForwarder bijwerken", line, "", percent);
+        show(TR("Updating EmuForwarder", "EmuForwarder bijwerken"), line, "", percent);
     });
     const std::string now = sys::installed_version("TGMA00001");
     sys::log("updater: resultaat %d (%s), nu %s", int(result), error.c_str(), now.c_str());
     if (result == sys::Install::Done && now == version) {
         unlink(package.c_str());
-        show("Klaar!", "EmuForwarder is bijgewerkt. Je instellingen, iconen en muziek zijn bewaard.",
-             "X = sluiten, en start EmuForwarder op je home screen");
+        show(TR("Done!", "Klaar!"), TR("EmuForwarder is updated. Your settings, icons and music are kept.", "EmuForwarder is bijgewerkt. Je instellingen, iconen en muziek zijn bewaard."),
+             TR("X = close, then start EmuForwarder from your home screen", "X = sluiten, en start EmuForwarder op je home screen"));
     } else {
-        snprintf(line, sizeof(line), "Bijwerken lukte niet%s%s.", error.empty() ? "" : ": ", error.c_str());
-        show("Niet gelukt", line, "Het pakket staat nog in /data/pkg (GoldHEN > Package Installer kan ook).  X = sluiten");
+        snprintf(line, sizeof(line), TR("Update failed%s%s.", "Bijwerken lukte niet%s%s."), error.empty() ? "" : ": ", error.c_str());
+        show(TR("Didn't work", "Niet gelukt"), line, TR("The package is still in /data/pkg (GoldHEN > Package Installer works too).  X = close", "Het pakket staat nog in /data/pkg (GoldHEN > Package Installer kan ook).  X = sluiten"));
     }
     wait_for_cross(pad);
     sceSystemServiceLoadExec("exit", NULL);

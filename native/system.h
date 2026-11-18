@@ -1,4 +1,5 @@
 #pragma once
+#include "lang.h"
 // EmuForwarder's system access on a PS4 with GoldHEN:
 //  - leave the sandbox (GoldHEN SDK syscall 500, command 2), so /user/appmeta, the app database and
 //    the installer are reachable (same call as Retrocade and the GoldHEN plugins SDK);
@@ -302,7 +303,7 @@ static Install install(const char *package, const char *title_id, const char *na
     }
     if (rc != 0) {
         char text[64];
-        snprintf(text, sizeof(text), "installeren mislukt (0x%08x)", unsigned(rc));
+        snprintf(text, sizeof(text), TR("install failed (0x%08x)", "installeren mislukt (0x%08x)"), unsigned(rc));
         error = text;
         return Install::Failed;
     }
@@ -312,7 +313,7 @@ static Install install(const char *package, const char *title_id, const char *na
     }
     if (rc != 0) {
         char text[64];
-        snprintf(text, sizeof(text), "installatie starten mislukt (0x%08x)", unsigned(rc));
+        snprintf(text, sizeof(text), TR("couldn't start the install (0x%08x)", "installatie starten mislukt (0x%08x)"), unsigned(rc));
         error = text;
         log("starten: 0x%08x", unsigned(rc));
         return Install::Failed;
@@ -330,7 +331,7 @@ static Install install(const char *package, const char *title_id, const char *na
         }
         if (state.error != 0) {
             char text[64];
-            snprintf(text, sizeof(text), "installatie mislukt (0x%08x)", unsigned(state.error));
+            snprintf(text, sizeof(text), TR("install failed (0x%08x)", "installatie mislukt (0x%08x)"), unsigned(state.error));
             error = text;
             log("fout tijdens installeren: 0x%08x", unsigned(state.error));
             return Install::Failed;

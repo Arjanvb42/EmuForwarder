@@ -1,3 +1,4 @@
+#include "lang.h"
 #include <algorithm>
 #include <ctype.h>
 #include <dirent.h>
@@ -291,7 +292,7 @@ static void load_full_picture(Picture &picture)
 {
     if (picture.full || picture.full_url.empty())
         return;
-    snprintf(status, sizeof(status), "Volledige afbeelding laden...");
+    snprintf(status, sizeof(status), TR("Loading the full picture...", "Volledige afbeelding laden..."));
     draw();
     std::vector<uint8_t> body;
     Picture loaded;
@@ -302,9 +303,9 @@ static void load_full_picture(Picture &picture)
         shrink(picture, 2048);
         picture.full = true;
         picture.thumb_state = 1;
-        snprintf(status, sizeof(status), "Verplaats en zoom de afbeelding; X slaat hem op als icoon.");
+        snprintf(status, sizeof(status), TR("Move and zoom the picture; X saves it as the icon.", "Verplaats en zoom de afbeelding; X slaat hem op als icoon."));
     } else {
-        snprintf(status, sizeof(status), "De grote versie kwam niet binnen; de kleine wordt gebruikt.");
+        snprintf(status, sizeof(status), TR("The large version didn't load; using the small one.", "De grote versie kwam niet binnen; de kleine wordt gebruikt."));
     }
     editor.dirty = true;
 }
@@ -325,7 +326,8 @@ static struct Menu {
 } menu;
 enum Action { TileAction, IconAction, ResetIconAction, CopyAction, MoveAction, ConfirmMoveAction, CancelAction,
               KeyAction, ToggleSteamGridAction, ClearKeyAction, OnlySteamGridAction, AutoUpdateAction,
-              CheckUpdateAction, InstallUpdateAction, ConfirmTileAction, RenameAction, MusicAction, VolumeAction };
+              CheckUpdateAction, InstallUpdateAction, ConfirmTileAction, RenameAction, MusicAction, VolumeAction,
+              LanguageAction };
 static time_t exit_armed = 0;
 static char last_status[256];
 static time_t status_time;
@@ -447,17 +449,17 @@ static void open_menu()
         menu.actions.push_back(action);
     };
     if (!game.internal) {
-        add("Naar interne schijf kopieren", CopyAction);
-        add("Naar interne schijf verplaatsen", MoveAction);
+        add(TR("Copy to internal storage", "Naar interne schijf kopieren"), CopyAction);
+        add(TR("Move to internal storage", "Naar interne schijf verplaatsen"), MoveAction);
     } else {
-        add(game.tile_installed ? "Tegel bijwerken" : "Tegel maken en installeren", TileAction);
-        add("Icoon kiezen", IconAction);
+        add(game.tile_installed ? TR("Update tile", "Tegel bijwerken") : TR("Make and install tile", "Tegel maken en installeren"), TileAction);
+        add(TR("Choose icon", "Icoon kiezen"), IconAction);
         char custom[96];
         custom_icon_path(game, custom);
         if (exists(custom))
-            add("Standaardicoon terugzetten", ResetIconAction);
+            add(TR("Restore default icon", "Standaardicoon terugzetten"), ResetIconAction);
     }
-    add("Annuleren", CancelAction);
+    add(TR("Cancel", "Annuleren"), CancelAction);
 }
 
 static void open_settings(int keep_selected = 0)
@@ -465,38 +467,41 @@ static void open_settings(int keep_selected = 0)
     menu = Menu{};
     menu.open = menu.settings = true;
     const std::string &key = online::settings.steamgriddb_key;
-    std::string key_label = "SteamGridDB API-sleutel: ";
-    key_label += key.empty() ? "niet ingesteld" : "****" + key.substr(key.size() > 4 ? key.size() - 4 : 0);
+    std::string key_label = TR("SteamGridDB API key: ", "SteamGridDB API-sleutel: ");
+    key_label += key.empty() ? TR("not set", "niet ingesteld") : "****" + key.substr(key.size() > 4 ? key.size() - 4 : 0);
     if (!key.empty() && key.size() != 32)
-        key_label += " (onvolledig, " + std::to_string(key.size()) + " tekens)";
+        key_label += TR(" (incomplete, ", " (onvolledig, ") + std::to_string(key.size()) + TR(" characters)", " tekens)");
     menu.items.push_back(key_label);
     menu.actions.push_back(KeyAction);
-    menu.items.push_back(std::string("SteamGridDB in de icoon-editor: ") + (online::settings.steamgriddb ? "aan" : "uit"));
+    menu.items.push_back(std::string(TR("SteamGridDB in the icon editor: ", "SteamGridDB in de icoon-editor: ")) + (online::settings.steamgriddb ? TR("on", "aan") : TR("off", "uit")));
     menu.actions.push_back(ToggleSteamGridAction);
-    menu.items.push_back(std::string("Alleen SteamGridDB (sneller, zonder GameTDB/libretro): ") +
-                         (online::settings.only_steamgriddb ? "aan" : "uit"));
+    menu.items.push_back(std::string(TR("SteamGridDB only (faster, without GameTDB/libretro): ", "Alleen SteamGridDB (sneller, zonder GameTDB/libretro): ")) +
+                         (online::settings.only_steamgriddb ? TR("on", "aan") : TR("off", "uit")));
     menu.actions.push_back(OnlySteamGridAction);
     if (!key.empty()) {
-        menu.items.push_back("SteamGridDB-sleutel wissen");
+        menu.items.push_back(TR("Remove SteamGridDB key", "SteamGridDB-sleutel wissen"));
         menu.actions.push_back(ClearKeyAction);
     }
     char music_label[160];
-    snprintf(music_label, sizeof(music_label), "Achtergrondmuziek: %s  (%d nummer(s) in /data/PS4Tegelmaker/muziek)",
-             online::settings.music ? "aan" : "uit", music::track_count);
+    snprintf(music_label, sizeof(music_label), TR("Background music: %s  (%d track(s) in /data/PS4Tegelmaker/muziek)", "Achtergrondmuziek: %s  (%d nummer(s) in /data/PS4Tegelmaker/muziek)"),
+             online::settings.music ? TR("on", "aan") : TR("off", "uit"), music::track_count);
     menu.items.push_back(music_label);
     menu.actions.push_back(MusicAction);
-    menu.items.push_back("Volume muziek: " + std::to_string(online::settings.music_volume) + "%");
+    menu.items.push_back(TR("Music volume: ", "Volume muziek: ") + std::to_string(online::settings.music_volume) + "%");
     menu.actions.push_back(VolumeAction);
-    menu.items.push_back(std::string("Bij het starten naar updates zoeken: ") + (online::settings.auto_update ? "aan" : "uit"));
+    menu.items.push_back(std::string(TR("Check for updates at start: ", "Bij het starten naar updates zoeken: ")) + (online::settings.auto_update ? TR("on", "aan") : TR("off", "uit")));
     menu.actions.push_back(AutoUpdateAction);
     if (update::done && update::newer()) {
-        menu.items.push_back(update::latest.version + " downloaden naar /data/pkg (nu " EF_VERSION ")");
+        menu.items.push_back(update::latest.version + TR(" download to /data/pkg (now ", " downloaden naar /data/pkg (nu ") + EF_VERSION + ")");
         menu.actions.push_back(InstallUpdateAction);
     } else {
-        menu.items.push_back(update::checking ? "Zoeken naar updates..." : "Nu naar updates zoeken (nu " EF_VERSION ")");
+        menu.items.push_back(update::checking ? std::string(TR("Checking for updates...", "Zoeken naar updates..."))
+                                              : std::string(TR("Check for updates now (now ", "Nu naar updates zoeken (nu ")) + EF_VERSION + ")");
         menu.actions.push_back(CheckUpdateAction);
     }
-    menu.items.push_back("Sluiten");
+    menu.items.push_back(TR("Language: English", "Taal: Nederlands"));
+    menu.actions.push_back(LanguageAction);
+    menu.items.push_back(TR("Close", "Sluiten"));
     menu.actions.push_back(CancelAction);
     menu.selected = std::min(keep_selected, int(menu.items.size()) - 1);
 }
@@ -505,15 +510,15 @@ static void open_settings(int keep_selected = 0)
 static void install_update()
 {
     menu.open = false;
-    snprintf(status, sizeof(status), "%s downloaden...", update::latest.version.c_str());
+    snprintf(status, sizeof(status), TR("Downloading %s...", "%s downloaden..."), update::latest.version.c_str());
     draw();
     std::string error;
     if (!update::download(error)) {
-        snprintf(status, sizeof(status), "Downloaden lukte niet: %s.", error.c_str());
+        snprintf(status, sizeof(status), TR("Download failed: %s.", "Downloaden lukte niet: %s."), error.c_str());
         return;
     }
     snprintf(status, sizeof(status),
-             "%s staat klaar. Sluit EmuForwarder en open EFUpdater (oranje) op je home screen.",
+             TR("%s is ready. Close EmuForwarder and open EFUpdater (orange) on your home screen.", "%s staat klaar. Sluit EmuForwarder en open EFUpdater (oranje) op je home screen."),
              update::latest.version.c_str());
 }
 
@@ -522,7 +527,7 @@ static void open_name_question()
 {
     menu = Menu{};
     menu.open = menu.confirm_name = true;
-    menu.items = {"Ja, tegel maken", "Naam wijzigen", "Annuleren"};
+    menu.items = {TR("Yes, make the tile", "Ja, tegel maken"), TR("Change name", "Naam wijzigen"), TR("Cancel", "Annuleren")};
     menu.actions = {ConfirmTileAction, RenameAction, CancelAction};
 }
 
@@ -539,15 +544,15 @@ static void ensure_updater()
         return;
     }
     std::string error;
-    snprintf(status, sizeof(status), "EFUpdater installeren...");
+    snprintf(status, sizeof(status), TR("Installing EFUpdater...", "EFUpdater installeren..."));
     draw();
     const sys::Install result = sys::install(Copy, "TGMA00002", "EFUpdater", error, [](int percent) {
-        snprintf(status, sizeof(status), "EFUpdater installeren... %d%%", percent);
+        snprintf(status, sizeof(status), TR("Installing EFUpdater... %d%%", "EFUpdater installeren... %d%%"), percent);
         draw();
     });
     unlink(Copy);
-    snprintf(status, sizeof(status), result == sys::Install::Failed ? "EFUpdater installeren lukte niet (%s)."
-                                                                    : "EFUpdater staat op je home screen.",
+    snprintf(status, sizeof(status), result == sys::Install::Failed ? TR("Couldn't install EFUpdater (%s).", "EFUpdater installeren lukte niet (%s).")
+                                                                    : TR("EFUpdater is on your home screen.", "EFUpdater staat op je home screen."),
              error.c_str());
 }
 
@@ -555,7 +560,7 @@ static void open_update_question()
 {
     menu = Menu{};
     menu.open = menu.update = true;
-    menu.items = {"Downloaden naar /data/pkg", "Later"};
+    menu.items = {TR("Download to /data/pkg", "Downloaden naar /data/pkg"), "Later"};
     menu.actions = {InstallUpdateAction, CancelAction};
 }
 
@@ -576,7 +581,7 @@ static void run_menu_action()
         menu.open = false;
         if (action == KeyAction) {
             std::string key = online::settings.steamgriddb_key;
-            if (online::keyboard("SteamGridDB API-sleutel", key, [] { draw(); usleep(16 * 1000); })) {
+            if (online::keyboard(TR("SteamGridDB API key", "SteamGridDB API-sleutel"), key, [] { draw(); usleep(16 * 1000); })) {
                 std::string clean;
                 for (char c : key)
                     if (c != ' ')
@@ -586,13 +591,13 @@ static void run_menu_action()
                     hex &= isxdigit(static_cast<unsigned char>(c)) != 0;
                 if (!clean.empty() && (clean.size() != 32 || !hex)) {
                     snprintf(status, sizeof(status),
-                             "Die sleutel klopt niet: een SteamGridDB-sleutel heeft 32 tekens (0-9 en a-f), deze heeft er %d.",
+                             TR("That key isn't right: a SteamGridDB key has 32 characters (0-9 and a-f), this one has %d.", "Die sleutel klopt niet: een SteamGridDB-sleutel heeft 32 tekens (0-9 en a-f), deze heeft er %d."),
                              int(clean.size()));
                 } else {
                     online::settings.steamgriddb_key = clean;
                     online::save_settings();
-                    snprintf(status, sizeof(status), clean.empty() ? "SteamGridDB-sleutel verwijderd."
-                                                                   : "SteamGridDB-sleutel opgeslagen. Kies een icoon met Options.");
+                    snprintf(status, sizeof(status), clean.empty() ? TR("SteamGridDB key removed.", "SteamGridDB-sleutel verwijderd.")
+                                                                   : TR("SteamGridDB key saved. Choose an icon with Options.", "SteamGridDB-sleutel opgeslagen. Kies een icoon met Options."));
                 }
             }
         } else if (action == OnlySteamGridAction) {
@@ -601,12 +606,17 @@ static void run_menu_action()
         } else if (action == ToggleSteamGridAction) {
             online::settings.steamgriddb = !online::settings.steamgriddb;
             online::save_settings();
+        } else if (action == LanguageAction) {
+            lang::dutch = !lang::dutch;
+            online::save_settings();
+            refresh_tiles();  // the tile lines ("Tile: ...") are made in the language
+            snprintf(status, sizeof(status), "%s", TR("Language: English", "Taal: Nederlands"));
         } else if (action == MusicAction) {
             online::settings.music = !online::settings.music;
             music::enabled = online::settings.music;
             online::save_settings();
             if (online::settings.music && music::track_count == 0)
-                snprintf(status, sizeof(status), "Zet .ogg- of .wav-bestanden (16-bit) in /data/PS4Tegelmaker/muziek (via FTP).");
+                snprintf(status, sizeof(status), TR("Put .ogg or .wav files (16-bit) in /data/PS4Tegelmaker/muziek (via FTP).", "Zet .ogg- of .wav-bestanden (16-bit) in /data/PS4Tegelmaker/muziek (via FTP)."));
         } else if (action == VolumeAction) {
             online::settings.music_volume = online::settings.music_volume >= 100 ? 20 : online::settings.music_volume + 20;
             music::volume = online::settings.music_volume;
@@ -616,11 +626,11 @@ static void run_menu_action()
             online::save_settings();
         } else if (action == CheckUpdateAction) {
             update::check();
-            snprintf(status, sizeof(status), "Zoeken naar updates...");
+            snprintf(status, sizeof(status), TR("Checking for updates...", "Zoeken naar updates..."));
         } else if (action == ClearKeyAction) {
             online::settings.steamgriddb_key.clear();
             online::save_settings();
-            snprintf(status, sizeof(status), "SteamGridDB-sleutel verwijderd.");
+            snprintf(status, sizeof(status), TR("SteamGridDB key removed.", "SteamGridDB-sleutel verwijderd."));
         }
         if (action != CancelAction)
             open_settings(at);
@@ -635,13 +645,13 @@ static void run_menu_action()
     case ConfirmTileAction: prepare_tile(games[index]); break;
     case RenameAction: {
         std::string name = tile_title(games[index]);
-        if (online::keyboard("Naam van de tegel", name, [] { draw(); usleep(16 * 1000); })) {
+        if (online::keyboard(TR("Tile name", "Naam van de tegel"), name, [] { draw(); usleep(16 * 1000); })) {
             while (!name.empty() && name.back() == ' ')
                 name.pop_back();
             while (!name.empty() && name.front() == ' ')
                 name.erase(0, 1);
             if (!save_title(games[index], name))
-                snprintf(status, sizeof(status), "Kan de naam niet opslaan.");
+                snprintf(status, sizeof(status), TR("Couldn't save the name.", "Kan de naam niet opslaan."));
             refresh_tiles();
         }
         open_name_question();
@@ -653,7 +663,7 @@ static void run_menu_action()
     case MoveAction:
         menu = Menu{};
         menu.open = menu.confirm_move = true;
-        menu.items = {"Ja, verplaatsen", "Annuleren"};
+        menu.items = {TR("Yes, move", "Ja, verplaatsen"), TR("Cancel", "Annuleren")};
         menu.actions = {ConfirmMoveAction, CancelAction};
         return;
     case ConfirmMoveAction: transfer_game(games[index], true); break;
@@ -728,7 +738,7 @@ static void draw()
         v.app_icon = app_icon.empty() ? nullptr : app_icon.data();
         for (const std::string &key : tab_keys) {
             if (key.empty())
-                v.tabs.push_back("Alles");
+                v.tabs.push_back(TR("All", "Alles"));
             else if (key == "gamecube")
                 v.tabs.push_back("GameCube");
             else {
@@ -750,24 +760,24 @@ static void draw()
         if (!view.empty()) {
             const Game &game = games[selected];
             v.detail_title = game.name;
-            std::string line = console_label(game) + "  -  " + (game.internal ? "Intern" : "USB") + "  -  ";
+            std::string line = console_label(game) + "  -  " + (game.internal ? TR("Internal", "Intern") : "USB") + "  -  ";
             if (!game.internal)
-                line += "Kopieer of verplaats hem eerst naar de interne schijf";
+                line += TR("Copy or move it to internal storage first", "Kopieer of verplaats hem eerst naar de interne schijf");
             else if (!game.tile_label[0])
-                line += "Nog geen tegel";
+                line += TR("No tile yet", "Nog geen tegel");
             else
-                line += std::string("Tegel: ") + game.tile_label + (game.tile_installed ? " (op je PS4)" : " (nog installeren)");
+                line += std::string(TR("Tile: ", "Tegel: ")) + game.tile_label + (game.tile_installed ? TR(" (on your PS4)", " (op je PS4)") : TR(" (not installed yet)", " (nog installeren)"));
             v.detail_line = line;
         }
         v.status = status;
         v.status_is_news = time(nullptr) - status_time < 5;
         if (menu.open) {
             v.menu_open = true;
-            v.menu_title = menu.confirm_name && !view.empty() ? "De tegel krijgt de naam:  \"" + tile_title(games[selected]) + "\""
-                         : menu.update ? "Nieuwe versie: " + update::latest.version +
+            v.menu_title = menu.confirm_name && !view.empty() ? TR("The tile gets the name:  \"", "De tegel krijgt de naam:  \"") + tile_title(games[selected]) + "\""
+                         : menu.update ? TR("New version: ", "Nieuwe versie: ") + update::latest.version +
                                              (update::latest.notes.empty() ? "" : "  -  " + update::latest.notes)
-                         : menu.settings ? "Instellingen"
-                         : menu.confirm_move ? "Verplaatsen? De USB-kopie wordt gewist na controle."
+                         : menu.settings ? TR("Settings", "Instellingen")
+                         : menu.confirm_move ? TR("Move? The USB copy is deleted after checking.", "Verplaatsen? De USB-kopie wordt gewist na controle.")
                                              : (view.empty() ? "" : games[selected].name);
             v.menu_items = menu.items;
             v.menu_selected = menu.selected;
@@ -1027,11 +1037,11 @@ static void scan(const char *restore = nullptr)
             if (!strcmp(restore, games[i].path))
                 selected = i;
     if (mounts)
-        snprintf(status, sizeof(status), "USB: %d game(s). Intern: %d game(s).", count - internal, internal);
+        snprintf(status, sizeof(status), TR("USB: %d game(s). Internal: %d game(s).", "USB: %d game(s). Intern: %d game(s)."), count - internal, internal);
     else if (ftp_connected)
-        snprintf(status, sizeof(status), "GoldHEN FTP ziet geen USB-stick. Intern: %d game(s).", internal);
+        snprintf(status, sizeof(status), TR("GoldHEN FTP sees no USB stick. Internal: %d game(s).", "GoldHEN FTP ziet geen USB-stick. Intern: %d game(s)."), internal);
     else
-        snprintf(status, sizeof(status), "Zet GoldHEN FTP Server aan en druk op Driehoek. Intern: %d game(s).", internal);
+        snprintf(status, sizeof(status), TR("Turn on GoldHEN FTP Server and press Triangle. Internal: %d game(s).", "Zet GoldHEN FTP Server aan en druk op Driehoek. Intern: %d game(s)."), internal);
     for (int i = 0; i < count; ++i) {
         games[i].thumb.clear();
         games[i].thumb_state = 0;
@@ -1146,7 +1156,7 @@ static bool copy_file(const char *source, const char *destination, bool verify, 
         }
         copied += read_count;
         if ((copied & ((32u << 20) - 1)) < read_count) {
-            snprintf(status, sizeof(status), "%llu MiB gekopieerd...", static_cast<unsigned long long>(copied >> 20));
+            snprintf(status, sizeof(status), TR("%llu MiB copied...", "%llu MiB gekopieerd..."), static_cast<unsigned long long>(copied >> 20));
             draw();
         }
     }
@@ -1156,7 +1166,7 @@ static bool copy_file(const char *source, const char *destination, bool verify, 
     if (fclose(output))
         ok = false;
     if (ok && verify) {
-        snprintf(status, sizeof(status), "Bron en kopie volledig vergelijken...");
+        snprintf(status, sizeof(status), TR("Comparing source and copy...", "Bron en kopie volledig vergelijken..."));
         draw();
         ok = same_file(source, pending, via_ftp);
     }
@@ -1170,31 +1180,31 @@ static bool copy_file(const char *source, const char *destination, bool verify, 
 static void transfer_game(Game chosen, bool move)
 {
     if (chosen.internal) {
-        snprintf(status, sizeof(status), "Kies voor kopieren of verplaatsen een USB-game.");
+        snprintf(status, sizeof(status), TR("Choose a USB game to copy or move.", "Kies voor kopieren of verplaatsen een USB-game."));
         return;
     }
     char destination[768];
     const char *filename = basename_of(chosen.path);
     const int length = snprintf(destination, sizeof(destination), "%s/%s", Library, filename);
     if (length < 0 || length >= static_cast<int>(sizeof(destination))) {
-        snprintf(status, sizeof(status), "De bestandsnaam is te lang.");
+        snprintf(status, sizeof(status), TR("The file name is too long.", "De bestandsnaam is te lang."));
         return;
     }
     if (!strcasecmp(filename, "game.iso")) {
         snprintf(destination, sizeof(destination), "%s/%s.iso", Library, chosen.name);
     }
     if (exists(destination)) {
-        snprintf(status, sizeof(status), "Bestaande interne kopie volledig vergelijken...");
+        snprintf(status, sizeof(status), TR("Comparing the existing internal copy...", "Bestaande interne kopie volledig vergelijken..."));
         draw();
         if (!same_file(chosen.path, destination, chosen.via_ftp)) {
-            snprintf(status, sizeof(status), "Naam bestaat intern met andere inhoud. USB-bestand behouden.");
+            snprintf(status, sizeof(status), TR("A different file with this name is already internal. USB file kept.", "Naam bestaat intern met andere inhoud. USB-bestand behouden."));
             return;
         }
     } else {
-        snprintf(status, sizeof(status), "Game naar interne schijf kopieren...");
+        snprintf(status, sizeof(status), TR("Copying the game to internal storage...", "Game naar interne schijf kopieren..."));
         draw();
         if (!copy_file(chosen.path, destination, true, chosen.via_ftp)) {
-            snprintf(status, sizeof(status), "Kopie mislukt. Controleer USB en vrije ruimte. USB-bestand behouden.");
+            snprintf(status, sizeof(status), TR("Copy failed. Check the USB stick and free space. USB file kept.", "Kopie mislukt. Controleer USB en vrije ruimte. USB-bestand behouden."));
             return;
         }
     }
@@ -1204,13 +1214,13 @@ static void transfer_game(Game chosen, bool move)
         const bool removed = chosen.via_ftp ? (ftp.login(ftp_address) && ftp.remove_usb_file(chosen.path))
                                             : unlink(chosen.path) == 0;
         if (!removed) {
-            snprintf(status, sizeof(status), "Interne kopie gecontroleerd. USB kon niet gewist worden.");
+            snprintf(status, sizeof(status), TR("Internal copy checked. The USB file couldn't be deleted.", "Interne kopie gecontroleerd. USB kon niet gewist worden."));
             return;
         }
     }
     scan(destination);
-    snprintf(status, sizeof(status), "%s. Druk op X bij de interne game om een tegel klaar te zetten.",
-             move ? "Verplaatst" : "Gekopieerd");
+    snprintf(status, sizeof(status), TR("%s. Press X on the internal game to set up a tile.", "%s. Druk op X bij de interne game om een tegel klaar te zetten."),
+             move ? TR("Moved", "Verplaatst") : TR("Copied", "Gekopieerd"));
 }
 
 static bool assign(const Game &game)
@@ -1249,21 +1259,21 @@ static bool directory_exists(const char *path)
 static bool stage_package(const char *source, const char *destination, const char *label)
 {
     if (!exists(source)) {
-        snprintf(status, sizeof(status), "Het pakket voor %s ontbreekt in %s.", label, Templates);
+        snprintf(status, sizeof(status), TR("The package for %s is missing in %s.", "Het pakket voor %s ontbreekt in %s."), label, Templates);
         return false;
     }
     if (exists(destination)) {
-        snprintf(status, sizeof(status), "Klaargezet pakket voor %s controleren...", label);
+        snprintf(status, sizeof(status), TR("Checking the prepared package for %s...", "Klaargezet pakket voor %s controleren..."), label);
         draw();
         if (file_size(source) == file_size(destination) && same_file(source, destination))
             return true;
         unlink(destination);
     }
     mkdir(Installer, 0777);
-    snprintf(status, sizeof(status), "Installatiepakket voor %s klaarzetten...", label);
+    snprintf(status, sizeof(status), TR("Preparing the package for %s...", "Installatiepakket voor %s klaarzetten..."), label);
     draw();
     if (!copy_file(source, destination, true)) {
-        snprintf(status, sizeof(status), "Kan het installatiepakket niet klaarzetten. Controleer vrije ruimte.");
+        snprintf(status, sizeof(status), TR("Couldn't prepare the package. Check free space.", "Kan het installatiepakket niet klaarzetten. Controleer vrije ruimte."));
         return false;
     }
     return true;
@@ -1412,7 +1422,7 @@ static bool put_icon(const char *title_id, const char *source_png, bool render_c
     bool ok = false;
     for (int round = 0; round < (just_installed ? 6 : 1); ++round) {
         if (round) {
-            snprintf(status, sizeof(status), "Icoon vastzetten...");
+            snprintf(status, sizeof(status), TR("Setting the icon...", "Icoon vastzetten..."));
             draw();
             usleep(2 * 1000 * 1000);
         }
@@ -1435,7 +1445,7 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
 {
     sys::log("tegel %s (\"%s\") uit %s", title_id, title, package);
     if (!exists(package)) {
-        snprintf(status, sizeof(status), "Het tegelpakket ontbreekt: %s", package);
+        snprintf(status, sizeof(status), TR("The tile package is missing: %s", "Het tegelpakket ontbreekt: %s"), package);
         sys::log("pakket ontbreekt");
         return false;
     }
@@ -1445,10 +1455,10 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
     const std::string have = sys::installed_version(title_id), ours = sys::package_version(package);
     sys::Install result = sys::Install::AlreadyThere;
     if (have.empty() || ours.empty() || have < ours) {
-        snprintf(status, sizeof(status), "%s installeren...", title);
+        snprintf(status, sizeof(status), TR("Installing %s...", "%s installeren..."), title);
         draw();
         result = sys::install(package, title_id, title, error, [&](int percent) {
-            snprintf(status, sizeof(status), "%s installeren... %d%%", title, percent);
+            snprintf(status, sizeof(status), TR("Installing %s... %d%%", "%s installeren... %d%%"), title, percent);
             draw();
         });
     } else {
@@ -1459,7 +1469,7 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
         char destination[200];
         snprintf(destination, sizeof(destination), "%s/%s [%s].pkg", Installer, title, title_id);
         if (stage_package(package, destination, title))
-            snprintf(status, sizeof(status), "Zelf installeren lukte niet (%s). Installeer \"%s\" via GoldHEN Package Installer.",
+            snprintf(status, sizeof(status), TR("Couldn't install it (%s). Install \"%s\" with GoldHEN Package Installer.", "Zelf installeren lukte niet (%s). Installeer \"%s\" via GoldHEN Package Installer."),
                      error.c_str(), title);
         return false;
     }
@@ -1476,14 +1486,14 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
         if (now == title)
             break;
         sys::log("naam van %s staat weer op \"%s\": opnieuw zetten", title_id, now.c_str());
-        snprintf(status, sizeof(status), "Naam vastzetten...");
+        snprintf(status, sizeof(status), TR("Setting the name...", "Naam vastzetten..."));
         draw();
         usleep(2 * 1000 * 1000);
         named = sys::set_title(title_id, title);
     }
     // The home screen keeps the name and icon it read at install time until the PS4 restarts.
-    snprintf(status, sizeof(status), "%s staat klaar%s%s. Herstart de PS4 om de naam en het icoon op je home screen te zien.",
-             title, named ? "" : " (naam niet aangepast)", iconed ? "" : " (icoon niet aangepast)");
+    snprintf(status, sizeof(status), TR("%s is ready%s%s. Restart the PS4 to see the name and icon on your home screen.", "%s staat klaar%s%s. Herstart de PS4 om de naam en het icoon op je home screen te zien."),
+             title, named ? "" : TR(" (name not changed)", " (naam niet aangepast)"), iconed ? "" : TR(" (icon not changed)", " (icoon niet aangepast)"));
     return true;
 }
 
@@ -1534,7 +1544,7 @@ static void prepare_general(const SlotKind &kind, const Game &game, const char *
     snprintf(label, sizeof(label), "%s %d", kind.label_prefix, slot);
     snprintf(app, sizeof(app), "/user/app/%s%05d", kind.app_prefix, slot);
     if (!write_line(slot_file, game.path)) {
-        snprintf(status, sizeof(status), "Kan de tegel %s niet toewijzen.", label);
+        snprintf(status, sizeof(status), TR("Couldn't assign tile %s.", "Kan de tegel %s niet toewijzen."), label);
         return;
     }
     (void)app;
@@ -1546,7 +1556,7 @@ static void prepare_general(const SlotKind &kind, const Game &game, const char *
     place_tile(id, source, title.c_str(), true, custom, cover);
     if (!(cover && exists(cover)) && !exists(custom))
         snprintf(status + strlen(status), sizeof(status) - strlen(status),
-                 " Geen hoes gevonden: kies er een met Options.");
+                 TR(" No cover found: choose one with Options.", " Geen hoes gevonden: kies er een met Options."));
 }
 
 // GameCube games outside the catalog: cover from DolphinPS4's covers.
@@ -1554,7 +1564,7 @@ static void prepare_slot(const Game &game)
 {
     char disc[7];
     if (!read_disc(game.path, disc)) {
-        snprintf(status, sizeof(status), "Dit bestand is geen leesbare GameCube-disc.");
+        snprintf(status, sizeof(status), TR("This file isn't a readable GameCube disc.", "Dit bestand is geen leesbare GameCube-disc."));
         return;
     }
     char cover[128];
@@ -1590,7 +1600,7 @@ static bool ensure_library_folder(const Game &game)
         if (value == folder)
             return true;
         if (!value.empty()) {
-            snprintf(status, sizeof(status), "EmuSuNi zoekt %s-games in %s. Zet die map in EmuSuNi op %s.",
+            snprintf(status, sizeof(status), TR("EmuSuNi looks for %s games in %s. Set that folder to %s in EmuSuNi.", "EmuSuNi zoekt %s-games in %s. Zet die map in EmuSuNi op %s."),
                      game.system, value.c_str(), folder);
             return false;
         }
@@ -1612,7 +1622,7 @@ static bool ensure_library_folder(const Game &game)
         ok = false;
     if (!ok || rename(pending, EmuSuNiMenu)) {
         unlink(pending);
-        snprintf(status, sizeof(status), "Kan de gamemap niet aan EmuSuNi toevoegen.");
+        snprintf(status, sizeof(status), TR("Couldn't add the game folder to EmuSuNi.", "Kan de gamemap niet aan EmuSuNi toevoegen."));
         return false;
     }
     return true;
@@ -1685,7 +1695,7 @@ static void sync_icons()
     }
     if (applied) {
         const size_t used = strlen(status);
-        snprintf(status + used, sizeof(status) - used, " %d gekozen icoon/iconen op tegels gezet.", applied);
+        snprintf(status + used, sizeof(status) - used, TR(" Put %d chosen icon(s) on tiles.", " %d gekozen icoon/iconen op tegels gezet."), applied);
     }
 }
 
@@ -1693,7 +1703,7 @@ static void open_editor(int index)
 {
     const Game &game = games[index];
     if (!game.internal) {
-        snprintf(status, sizeof(status), "Zet de game eerst op de interne schijf (X of Vierkant).");
+        snprintf(status, sizeof(status), TR("Put the game on internal storage first (X or Square).", "Zet de game eerst op de interne schijf (X of Vierkant)."));
         return;
     }
     std::vector<ArtSource> sources;
@@ -1704,7 +1714,7 @@ static void open_editor(int index)
     } else {
         char disc[7];
         if (!read_disc(game.path, disc)) {
-            snprintf(status, sizeof(status), "Dit bestand is geen leesbare GameCube-disc.");
+            snprintf(status, sizeof(status), TR("This file isn't a readable GameCube disc.", "Dit bestand is geen leesbare GameCube-disc."));
             return;
         }
         sources = art::gametdb_sources(disc);
@@ -1716,9 +1726,9 @@ static void open_editor(int index)
     Picture picture;
     char custom[96];
     custom_icon_path(game, custom);
-    if (exists(custom) && load_picture("Huidig eigen icoon", nullptr, 0, custom, picture))
+    if (exists(custom) && load_picture(TR("Current own icon", "Huidig eigen icoon"), nullptr, 0, custom, picture))
         editor.pictures.push_back(std::move(picture));
-    if (exists(local) && load_picture(game.system[0] ? "EmuSuNi-hoes" : "DolphinPS4-hoes", nullptr, 0, local, picture))
+    if (exists(local) && load_picture(game.system[0] ? TR("EmuSuNi cover", "EmuSuNi-hoes") : TR("DolphinPS4 cover", "DolphinPS4-hoes"), nullptr, 0, local, picture))
         editor.pictures.push_back(std::move(picture));
     std::vector<std::string> kinds_found;
     std::vector<uint8_t> body;
@@ -1733,7 +1743,7 @@ static void open_editor(int index)
         const std::string kind = source.label.substr(0, source.label.find(" ("));
         if (std::find(kinds_found.begin(), kinds_found.end(), kind) != kinds_found.end())
             continue;
-        snprintf(status, sizeof(status), "Afbeeldingen ophalen... %d/%d", tried, static_cast<int>(sources.size()));
+        snprintf(status, sizeof(status), TR("Fetching pictures... %d/%d", "Afbeeldingen ophalen... %d/%d"), tried, static_cast<int>(sources.size()));
         draw();
         const int code = art::get(source.host, source.path, body);
         if (code < 0)
@@ -1746,11 +1756,11 @@ static void open_editor(int index)
     // SteamGridDB (needs a free API key, see Settings): app icons, icons, covers, banners and logos.
     std::string online_note;
     if (online::settings.steamgriddb && !online::settings.steamgriddb_key.empty()) {
-        snprintf(status, sizeof(status), "SteamGridDB doorzoeken...");
+        snprintf(status, sizeof(status), TR("Searching SteamGridDB...", "SteamGridDB doorzoeken..."));
         draw();
         const std::string search = game.tile ? game.tile->title : tile_title(game);
         const std::vector<online::Image> found = online::steamgriddb_images(search, online_note, [](const char *kind) {
-            snprintf(status, sizeof(status), "SteamGridDB doorzoeken (%s)...", kind);
+            snprintf(status, sizeof(status), TR("Searching SteamGridDB (%s)...", "SteamGridDB doorzoeken (%s)..."), kind);
             draw();
         });
         sys::log("SteamGridDB \"%s\": %zu afbeelding(en)%s%s", search.c_str(), found.size(),
@@ -1765,11 +1775,11 @@ static void open_editor(int index)
             editor.pictures.push_back(std::move(lazy));
         }
     } else if (online::settings.steamgriddb_key.empty()) {
-        online_note = "Meer keuze (iconen, banners): stel SteamGridDB in met Vierkant";
+        online_note = TR("More choice (icons, banners): set up SteamGridDB with Square", "Meer keuze (iconen, banners): stel SteamGridDB in met Vierkant");
     }
     if (editor.pictures.empty()) {
-        snprintf(status, sizeof(status), offline ? "Geen internet: er zijn geen afbeeldingen opgehaald."
-                                                 : "Geen afbeeldingen gevonden voor deze game.");
+        snprintf(status, sizeof(status), offline ? TR("No internet: no pictures were fetched.", "Geen internet: er zijn geen afbeeldingen opgehaald.")
+                                                 : TR("No pictures found for this game.", "Geen afbeeldingen gevonden voor deze game."));
         return;
     }
     editor.open = true;
@@ -1781,7 +1791,9 @@ static void open_editor(int index)
     editor.zoom = 1.0f;
     editor.dx = editor.dy = 0;
     editor.dirty = true;
-    snprintf(status, sizeof(status), "%d afbeelding(en): kies met de pijltjes, Vierkant toont ze als raster.%s%s",
+    snprintf(status, sizeof(status),
+             TR("%d picture(s): choose with the D-pad, Square shows them as a grid.%s%s",
+                "%d afbeelding(en): kies met de pijltjes, Vierkant toont ze als raster.%s%s"),
              static_cast<int>(editor.pictures.size()), online_note.empty() ? "" : " ", online_note.c_str());
 }
 
@@ -1796,13 +1808,13 @@ static void save_editor()
     char custom[96];
     custom_icon_path(game, custom);
     if (!write_png(custom, editor.icon)) {
-        snprintf(status, sizeof(status), "Kan het icoon niet opslaan.");
+        snprintf(status, sizeof(status), TR("Couldn't save the icon.", "Kan het icoon niet opslaan."));
         return;
     }
     editor.open = false;
     char id[16];
     if (!tile_for(game, id)) {
-        snprintf(status, sizeof(status), "Icoon opgeslagen. Druk op X om de tegel te maken; het icoon gaat mee.");
+        snprintf(status, sizeof(status), TR("Icon saved. Press X to make the tile; the icon comes along.", "Icoon opgeslagen. Druk op X om de tegel te maken; het icoon gaat mee."));
         return;
     }
     char app[48], meta[48], icon[96];
@@ -1810,16 +1822,16 @@ static void save_editor()
     snprintf(meta, sizeof(meta), "/user/appmeta/%s", id);
     snprintf(icon, sizeof(icon), "%s/icon0.png", meta);
     if (!directory_exists(app)) {
-        snprintf(status, sizeof(status), "Icoon opgeslagen. Installeer de tegel en druk daarna op X; dan komt het icoon erop.");
+        snprintf(status, sizeof(status), TR("Icon saved. Install the tile, then press X to put the icon on it.", "Icoon opgeslagen. Installeer de tegel en druk daarna op X; dan komt het icoon erop."));
         return;
     }
     sys::Elevated elevated;
     mkdir(meta, 0777);
     if (!write_png(icon, editor.icon)) {
-        snprintf(status, sizeof(status), "Icoon opgeslagen, maar het kon niet op de tegel worden gezet.");
+        snprintf(status, sizeof(status), TR("Icon saved, but it couldn't be put on the tile.", "Icoon opgeslagen, maar het kon niet op de tegel worden gezet."));
         return;
     }
-    snprintf(status, sizeof(status), "Icoon op de tegel gezet. Zie je het oude icoon nog, herstart dan de PS4.");
+    snprintf(status, sizeof(status), TR("Icon put on the tile. Still see the old one? Restart the PS4.", "Icoon op de tegel gezet. Zie je het oude icoon nog, herstart dan de PS4."));
 }
 
 // Choosing: the list (with a preview) or a full-screen grid; Square switches and keeps the selection.
@@ -1835,7 +1847,7 @@ static void editor_input(uint32_t pressed, uint32_t held)
     if (!editor.adjusting) {
         if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
             editor.open = false;
-            snprintf(status, sizeof(status), "Icoon niet gewijzigd.");
+            snprintf(status, sizeof(status), TR("Icon not changed.", "Icoon niet gewijzigd."));
             return;
         }
         if (pressed & ORBIS_PAD_BUTTON_SQUARE) {
@@ -1871,7 +1883,7 @@ static void editor_input(uint32_t pressed, uint32_t held)
         if (pressed & ORBIS_PAD_BUTTON_CROSS) {
             editor.from_grid = editor.grid;
             editor.adjusting = true;
-            snprintf(status, sizeof(status), "Verplaats en zoom de afbeelding; X slaat hem op als icoon.");
+            snprintf(status, sizeof(status), TR("Move and zoom the picture; X saves it as the icon.", "Verplaats en zoom de afbeelding; X slaat hem op als icoon."));
             load_full_picture(editor.pictures[editor.current]);
             reset();
         }
@@ -1880,7 +1892,7 @@ static void editor_input(uint32_t pressed, uint32_t held)
     if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
         editor.adjusting = false;
         editor.grid = editor.from_grid;
-        snprintf(status, sizeof(status), "Kies een afbeelding en druk op X; Vierkant wisselt lijst en raster.");
+        snprintf(status, sizeof(status), TR("Choose a picture and press X; Square switches list and grid.", "Kies een afbeelding en druk op X; Vierkant wisselt lijst en raster."));
         return;
     }
     if (pressed & ORBIS_PAD_BUTTON_CROSS) {
@@ -1918,11 +1930,11 @@ static void prepare_tile(const Game &game)
     }
     char disc[7];
     if (!read_disc(game.path, disc) || strcmp(disc, game.tile->disc)) {
-        snprintf(status, sizeof(status), "Dit interne bestand is gewijzigd. Zoek de games opnieuw.");
+        snprintf(status, sizeof(status), TR("This internal file changed. Search for games again.", "Dit interne bestand is gewijzigd. Zoek de games opnieuw."));
         return;
     }
     if (!assign(game)) {
-        snprintf(status, sizeof(status), "Kan het pad naar de interne game niet opslaan.");
+        snprintf(status, sizeof(status), TR("Couldn't save the path to the internal game.", "Kan het pad naar de interne game niet opslaan."));
         return;
     }
 
@@ -1941,7 +1953,7 @@ static void reset_icon(const Game &game)
     custom_icon_path(game, custom);
     unlink(custom);
     if (!tile_for(game, id)) {
-        snprintf(status, sizeof(status), "Eigen icoon verwijderd.");
+        snprintf(status, sizeof(status), TR("Own icon removed.", "Eigen icoon verwijderd."));
         return;
     }
     char cover[640] = "", icon[96];
@@ -1955,8 +1967,8 @@ static void reset_icon(const Game &game)
     snprintf(icon, sizeof(icon), "/user/appmeta/%s/icon0.png", id);
     sys::Elevated elevated;
     const bool done = cover[0] && exists(cover) && make_icon(cover, icon);
-    snprintf(status, sizeof(status), done ? "Standaardicoon teruggezet. Zie je het oude nog, herstart dan de PS4."
-                                          : "Eigen icoon verwijderd.");
+    snprintf(status, sizeof(status), done ? TR("Default icon restored. Still see the old one? Restart the PS4.", "Standaardicoon teruggezet. Zie je het oude nog, herstart dan de PS4.")
+                                          : TR("Own icon removed.", "Eigen icoon verwijderd."));
 }
 
 static int ef_app_main()
@@ -2043,14 +2055,14 @@ static int ef_app_main()
                 if (!editor.open && !menu.open)
                     open_update_question();
                 else
-                    snprintf(status, sizeof(status), "Nieuwe versie %s: Vierkant > Bijwerken.", update::latest.version.c_str());
+                    snprintf(status, sizeof(status), TR("New version %s: Square > Settings to download it.", "Nieuwe versie %s: Vierkant > Bijwerken."), update::latest.version.c_str());
                 draw();
             } else if (!update::check_error.empty()) {
                 sys::log("updates zoeken: %s", update::check_error.c_str());
                 if (menu.open && menu.settings)
-                    snprintf(status, sizeof(status), "Updates zoeken lukte niet: %s.", update::check_error.c_str());
+                    snprintf(status, sizeof(status), TR("Couldn't check for updates: %s.", "Updates zoeken lukte niet: %s."), update::check_error.c_str());
             } else if (menu.open && menu.settings) {
-                snprintf(status, sizeof(status), "Je hebt de nieuwste versie (" EF_VERSION ").");
+                snprintf(status, sizeof(status), TR("You have the newest version (%s).", "Je hebt de nieuwste versie (%s)."), EF_VERSION);
             }
             if (menu.open && menu.settings)
                 open_settings(menu.selected);
@@ -2131,7 +2143,7 @@ static int ef_app_main()
             if (games[selected].internal)
                 open_editor(selected);
             else
-                snprintf(status, sizeof(status), "Zet de game eerst op de interne schijf (X).");
+                snprintf(status, sizeof(status), TR("Put the game on internal storage first (X).", "Zet de game eerst op de interne schijf (X)."));
         }
         if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
             if (time(nullptr) - exit_armed < 3) {
@@ -2139,7 +2151,7 @@ static int ef_app_main()
                 return 0;
             }
             exit_armed = time(nullptr);
-            snprintf(status, sizeof(status), "Druk nog een keer op Rondje om EmuForwarder te sluiten.");
+            snprintf(status, sizeof(status), TR("Press Circle again to close EmuForwarder.", "Druk nog een keer op Rondje om EmuForwarder te sluiten."));
         }
         present();
     }

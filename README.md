@@ -1,8 +1,8 @@
-# EmuForwarder 1.0.0
+# EmuForwarder 1.0.1
 
 **Your emulator games as real tiles on the PS4 home screen.** EmuForwarder runs on the PS4 itself (GoldHEN). Pick a game, pick its artwork, and EmuForwarder installs a tile that starts that game straight in its emulator. No menus in between, no PC needed.
 
-**▶ [Watch the promo video](docs/promo/EmuForwarder-promo.mp4)** (1:34)
+**▶ [Watch the promo video](docs/promo/EmuForwarder-promo.mp4)** (1:34). Music: "Dreamy Spring" by Danger Lion X (Uppbeat).
 
 ## What it does
 
@@ -12,9 +12,10 @@
 - **Installs the tile itself**: straight from the app. The tile opens the game directly in its emulator.
 - **Real games to the PS4**: forwards show up as games, also in apps like **Itemzflow**.
 - **Updates itself**: see [Updating](#updating).
+- **English or Dutch**: English by default; switch to Dutch under **Settings → Language**.
 - **Extras**: background music (your own files) and an animated intro.
 
-## Supported emulators (1.0.0)
+## Supported emulators (1.0.1)
 
 | Emulator | Systems |
 | --- | --- |
@@ -39,7 +40,7 @@ EmuForwarder checks GitHub at start. When there is a new version, choose **Downl
 | L1 / R1 | Systems (All, GameCube, NDS, GBA, ...) |
 | X | Game menu: make or update the tile, choose an icon, copy from USB |
 | Options | Choose the icon |
-| Square | Settings (SteamGridDB key, sources, music, updates) |
+| Square | Settings (SteamGridDB key, sources, music, updates, language) |
 | Triangle | Search again |
 | Circle (2x) | Close |
 
@@ -62,6 +63,7 @@ It already works great, and it will keep getting better.
 - `native/`: the PS4 app (`main.cpp`) and EFUpdater (`updater.cpp`), OpenOrbis toolchain. `native/build.sh` builds both.
 - `offline-slot/`: the forwarder that goes into each tile.
 - `native/icons/`: `make_icons.py` (app icons) and `make_intro.py` (the intro's parts).
-- Releasing: `./publiceer.sh 1.0.1 "what's new"` builds, tags `v1.0.1` and puts the package on GitHub; every PS4 with EmuForwarder sees it at its next start.
+- Translations: every screen text is `TR("English", "Nederlands")` (`native/lang.h`); `python3 tools/check_lang.py` checks that both have the same placeholders.
+- Releasing: `./publiceer.sh 1.0.2 "what's new"` builds, tags `v1.0.2` and puts the package on GitHub; every PS4 with EmuForwarder sees it at its next start.
 
 Made by Studio van Batenburg.

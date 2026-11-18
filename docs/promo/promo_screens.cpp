@@ -72,44 +72,41 @@ int main(int argc, char **argv)
 
     // the library as it is on the PS4: chosen icons where there is one, else the cover
     struct G { std::string file; const char *title, *badge; bool usb, tile; };
+    // no Nintendo artwork: GameCube games from other publishers only, with the icons chosen on the PS4
     std::vector<G> games = {
-        {icons + "/371f58b92fdf3ed3.png", "Mario Kart DS", "NDS", false, false},
-        {icons + "/b83aceb9591f7990.png", "Pokemon - Emerald Version", "GBA", false, true},
-        {icons + "/629cbbeb3a75b802.png", "Crash Nitro Kart", "GAMECUBE", false, true},
+        {icons + "/629cbbeb3a75b802.png", "Crash Nitro Kart", "GAMECUBE", false, false},
         {icons + "/e820c027c6d1a458.png", "Prince of Persia - The Two Thrones", "GAMECUBE", false, true},
-        {icons + "/8f683f8e0d54c6b5.png", "Super Mario Sunshine", "GAMECUBE", false, false},
-        {icons + "/427c3ca440cce7ef.png", "Disney's Chicken Little", "GAMECUBE", false, false},
+        {icons + "/427c3ca440cce7ef.png", "Disney's Chicken Little", "GAMECUBE", false, true},
         {icons + "/c1717786ead90bc2.png", "Disney's Donald Duck - Quack Attack", "GAMECUBE", false, false},
         {art + "/G9RP7D.png", "Crash Tag Team Racing", "GAMECUBE", true, false},
         {art + "/GP2EAF.png", "Pac-Man World 2", "GAMECUBE", true, false},
         {art + "/GP3E78.png", "The Polar Express", "GAMECUBE", true, false},
-        {art + "/GYRE41.png", "TMNT", "GAMECUBE", true, false},
-        {art + "/GKME41.png", "Prince of Persia (USB copy)", "GAMECUBE", true, false}};
+        {art + "/GYRE41.png", "TMNT", "GAMECUBE", true, false}};
     std::vector<std::vector<uint8_t>> thumbs;
     for (auto &g : games) thumbs.push_back(square(g.file.c_str(), ui::ThumbSize));
     std::vector<uint8_t> icon = square(argv[4], 96);
 
     ui::LibraryView v;
-    v.version = "Emulator game forwarder  -  v1.0.0";
+    v.version = "Emulator game forwarder  -  v1.0.1";
     v.app_icon = icon.data();
-    v.tabs = {"Alles", "GameCube", "NDS", "GBA"};
+    v.tabs = {"All", "GameCube"};
     for (size_t i = 0; i < games.size(); ++i)
         v.cards.push_back({games[i].title, games[i].badge, thumbs[i].data(), games[i].usb, games[i].tile});
     v.selected = 0;
-    v.detail_title = "Mario Kart DS";
-    v.detail_line = "NDS  -  Intern  -  Nog geen tegel";
-    v.status = "12 games: 7 intern, 5 op USB.";
+    v.detail_title = "Crash Nitro Kart";
+    v.detail_line = "GameCube  -  Internal  -  No tile yet";
+    v.status = "USB: 4 game(s). Internal: 4 game(s).";
     ui::library(v);
     save(s, out + "/lib.png");
 
     v.menu_open = true;
-    v.menu_title = "Mario Kart DS";
-    v.menu_items = {"Tegel maken en installeren", "Icoon kiezen", "Standaardicoon terugzetten", "Annuleren"};
+    v.menu_title = "Crash Nitro Kart";
+    v.menu_items = {"Make and install tile", "Choose icon", "Restore default icon", "Cancel"};
     ui::library(v);
     save(s, out + "/menu.png");
 
-    v.menu_title = "De tegel krijgt de naam:  \"Mario Kart DS\"";
-    v.menu_items = {"Ja, tegel maken", "Naam wijzigen", "Annuleren"};
+    v.menu_title = "The tile gets the name:  \"Crash Nitro Kart\"";
+    v.menu_items = {"Yes, make the tile", "Change name", "Cancel"};
     ui::library(v);
     save(s, out + "/name.png");
 
@@ -118,24 +115,24 @@ int main(int argc, char **argv)
     const int steps[] = {12, 47, 83, 100};
     for (int i = 0; i < 4; ++i) {
         char line[128];
-        snprintf(line, sizeof line, "Mario Kart DS installeren... %d%%", steps[i]);
+        snprintf(line, sizeof line, "Installing Crash Nitro Kart... %d%%", steps[i]);
         v.status = line;
         ui::library(v);
         save(s, out + "/install" + std::to_string(i) + ".png");
     }
     v.cards[0].tile_installed = true;
-    v.detail_line = "NDS  -  Intern  -  Tegel: Mario Kart DS (op je PS4)";
-    v.status = "Mario Kart DS staat klaar. Herstart de PS4 om de naam en het icoon op je home screen te zien.";
+    v.detail_line = "GameCube  -  Internal  -  Tile: Crash Nitro Kart (on your PS4)";
+    v.status = "Crash Nitro Kart is ready. Restart the PS4 to see the name and icon on your home screen.";
     ui::library(v);
     save(s, out + "/installed.png");
 
     // icon editor: SteamGridDB grid, then moving and zooming the chosen one
     int w, h, c;
-    const std::string chosen = icons + "/371f58b92fdf3ed3.png";
+    const std::string chosen = icons + "/629cbbeb3a75b802.png";
     unsigned char *full = stbi_load(chosen.c_str(), &w, &h, &c, 3);
     std::vector<uint8_t> result = square(chosen.c_str(), 512, 1.15f);
     ui::EditorView e;
-    e.game = "Mario Kart DS";
+    e.game = "Crash Nitro Kart";
     e.source_rgb = full; e.source_w = w; e.source_h = h;
     e.icon = result.data();
     e.crop_side = w / 1.15f; e.crop_left = (w - e.crop_side) / 2; e.crop_top = (h - e.crop_side) / 2;
@@ -143,26 +140,26 @@ int main(int argc, char **argv)
     {
         ui::EditorView g = e;
         static std::vector<std::vector<uint8_t>> cells;
-        for (int i = 0; i < 24; ++i) {
-            char f[256]; snprintf(f, sizeof f, "%s/sgdb/%02d.png", out.c_str(), i % 19);
+        const char *labels[] = {"app icon 1  (1024x1024)", "GameTDB cover (US)", "libretro screenshot", "libretro title screen",
+                                "libretro logo", "GameTDB full cover HQ (US)", "libretro screenshot 2"};
+        for (int i = 0; i < 7; ++i) {  // <out>/grid/NN.png: Nintendo-free artwork for this game
+            char f[256]; snprintf(f, sizeof f, "%s/grid/%02d.png", out.c_str(), i);
             cells.push_back(square(f, ui::GridCellSize));
-            char l[64]; snprintf(l, sizeof l, "%s %d  (1024x1024)", i < 8 ? "app-icoon" : i < 14 ? "icoon" : i < 18 ? "hoes" : "banner", i + 1);
-            g.sources.push_back(l);
+            g.sources.push_back(labels[i]);
         }
-        cells[0] = square(chosen.c_str(), ui::GridCellSize);
         for (auto &cell : cells) g.cells.push_back(cell.data());
         g.grid = true; g.current = 0; g.grid_first = 0;
-        g.status = "271 afbeelding(en) van SteamGridDB, GameTDB en libretro.";
+        g.status = "7 picture(s): choose with the D-pad, Square shows them as a grid.";
         ui::editor_grid(g);
         save(s, out + "/grid.png");
-        g.current = 9;
+        g.current = 2;
         ui::editor_grid(g);
         save(s, out + "/grid2.png");
         e.sources = g.sources;
     }
     e.current = 0;
     e.adjusting = true;
-    e.status = "Verplaats en zoom de afbeelding; X slaat hem op als icoon.";
+    e.status = "Move and zoom the picture; X saves it as the icon.";
     ui::editor(e);
     save(s, out + "/editor.png");
     puts("ok");

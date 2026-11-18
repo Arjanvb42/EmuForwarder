@@ -1,4 +1,5 @@
 #pragma once
+#include "lang.h"
 // Updates from GitHub: EmuForwarder looks for a newer version at start and downloads the package
 // to /data/pkg. One push to GitHub reaches every PS4 that has the app; no FTP needed.
 //
@@ -90,7 +91,7 @@ static void *check_thread(void *)
     if (status == 200 && parse(std::string(body.begin(), body.end()), found))
         latest = found;
     else
-        check_error = status < 0 ? "geen verbinding met GitHub" : "GitHub antwoordde " + std::to_string(status);
+        check_error = status < 0 ? TR("no connection to GitHub", "geen verbinding met GitHub") : TR("GitHub answered ", "GitHub antwoordde ") + std::to_string(status);
     checking = false;
     done = true;
     return nullptr;
@@ -102,7 +103,7 @@ static void check()
     if (checking)
         return;
     if (!online::https_ready()) {  // set up here, on the main thread
-        check_error = "netwerk niet klaar";
+        check_error = TR("network not ready", "netwerk niet klaar");
         done = true;
         return;
     }
@@ -143,13 +144,13 @@ static bool download(std::string &error)
     std::vector<uint8_t> package;
     const int status = online::get(std::string(Base) + "EmuForwarder.pkg", {}, package, 64 * 1024 * 1024);
     if (status != 200) {
-        error = status < 0 ? "downloaden mislukt" : "GitHub antwoordde " + std::to_string(status);
+        error = status < 0 ? TR("download failed", "downloaden mislukt") : TR("GitHub answered ", "GitHub antwoordde ") + std::to_string(status);
         return false;
     }
     char hash[20];
     snprintf(hash, sizeof(hash), "%016llx", (unsigned long long)fnv64(package.data(), package.size()));
     if (package.size() != latest.size || latest.fnv != hash) {
-        error = "het gedownloade bestand klopt niet (probeer het over een paar minuten opnieuw)";
+        error = TR("the downloaded file isn't right (try again in a few minutes)", "het gedownloade bestand klopt niet (probeer het over een paar minuten opnieuw)");
         sys::log("update: %zu bytes, fnv %s; verwacht %zu, %s", package.size(), hash, latest.size, latest.fnv.c_str());
         return false;
     }
@@ -157,7 +158,7 @@ static bool download(std::string &error)
     const std::string target = package_path(latest.version), pending = target + ".tmp";
     FILE *file = fopen(pending.c_str(), "wb");
     if (!file) {
-        error = "kan niet opslaan in /data/pkg";
+        error = TR("can't save to /data/pkg", "kan niet opslaan in /data/pkg");
         return false;
     }
     bool ok = fwrite(package.data(), 1, package.size(), file) == package.size();
@@ -165,7 +166,7 @@ static bool download(std::string &error)
     ok = ok && rename(pending.c_str(), target.c_str()) == 0;
     if (!ok) {
         unlink(pending.c_str());
-        error = "kan niet opslaan in /data/pkg (genoeg ruimte?)";
+        error = TR("can't save to /data/pkg (enough space?)", "kan niet opslaan in /data/pkg (genoeg ruimte?)");
     } else if (DIR *dir = opendir(PackageFolder)) {
         const std::string keep = target.substr(strlen(PackageFolder) + 1);
         std::vector<std::string> old;

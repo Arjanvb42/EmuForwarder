@@ -1,4 +1,5 @@
 #pragma once
+#include "lang.h"
 // EmuForwarder's look: a dark, card-based library like the PS5 home screen and modern homebrew
 // stores. Everything here only draws; main.cpp fills a LibraryView / EditorView each frame.
 // Needs (declared before including): Scene2D *scene, struct Color, and FreeType.
@@ -420,8 +421,8 @@ static void library(const LibraryView &v)
     drawing = "kaarten";
     // Grid of cards.
     if (v.cards.empty()) {
-        text_center("Geen games gevonden", font_large, ScreenW / 2, 520, background_at(520), Text, true);
-        text_center("Sluit je USB-stick aan of download games met Retrocade, en druk op Driehoek.",
+        text_center(TR("No games found", "Geen games gevonden"), font_large, ScreenW / 2, 520, background_at(520), Text, true);
+        text_center(TR("Plug in your USB stick or download games with Retrocade, then press Triangle.", "Sluit je USB-stick aan of download games met Retrocade, en druk op Driehoek."),
                     font_body, ScreenW / 2, 572, background_at(572), Sub);
     }
     for (int row = 0; row < VisibleRows; ++row)
@@ -481,8 +482,8 @@ static void library(const LibraryView &v)
         const Color sc = v.status_is_news ? Warn : Sub;
         text(v.status.c_str(), font_small, 96, fy + 92, 1824, background_at(fy + 92), sc, v.status_is_news);
     }
-    hints({{Button::Cross, "Kiezen"}, {Button::Options, "Icoon"}, {Button::Square, "Instellingen"},
-           {Button::Triangle, "Zoeken"}, {Button::Circle, "Sluiten"}},
+    hints({{Button::Cross, TR("Select", "Kiezen")}, {Button::Options, TR("Icon", "Icoon")}, {Button::Square, TR("Settings", "Instellingen")},
+           {Button::Triangle, TR("Search", "Zoeken")}, {Button::Circle, TR("Close", "Sluiten")}},
           1824, fy + 10, background_at(fy + 10));
     drawing = "menu";
     if (v.menu_open)
@@ -511,11 +512,11 @@ static constexpr int GridColumns = 8, GridRows = 3, GridCellSize = 180;
 static void editor(const EditorView &v)
 {
     background();
-    header("Icoon kiezen", v.game.c_str(), nullptr, "");
+    header(TR("Choose icon", "Icoon kiezen"), v.game.c_str(), nullptr, "");
 
     // Sources.
     char sources_label[48];
-    snprintf(sources_label, sizeof(sources_label), "BRONNEN  %d/%d", v.current + 1, int(v.sources.size()));
+    snprintf(sources_label, sizeof(sources_label), TR("SOURCES  %d/%d", "BRONNEN  %d/%d"), v.current + 1, int(v.sources.size()));
     text(sources_label, font_small, 96, 220, 520, background_at(220), Sub, true);
     const int shown = 13, first = std::max(0, std::min(v.current - shown / 2, int(v.sources.size()) - shown));
     for (int i = first; i < int(v.sources.size()) && i < first + shown; ++i) {
@@ -528,10 +529,10 @@ static void editor(const EditorView &v)
 
     // Whole picture with the icon's square marked.
     const int box = 560, bx = 560, by = 238;
-    text("HELE AFBEELDING", font_small, bx, 220, bx + box, background_at(220), Sub, true);
+    text(TR("WHOLE PICTURE", "HELE AFBEELDING"), font_small, bx, 220, bx + box, background_at(220), Sub, true);
     round_rect(bx, by, box, box, 24, Card, background_at(by));
     if (!v.source_rgb || v.source_w <= 0) {
-        text_center("Afbeelding laden...", font_body, bx + box / 2, by + box / 2, Card, Sub);
+        text_center(TR("Loading picture...", "Afbeelding laden..."), font_body, bx + box / 2, by + box / 2, Card, Sub);
     } else {
     const float scale = std::min(float(box - 32) / v.source_w, float(box - 32) / v.source_h);
     const int vw = std::max(1, int(v.source_w * scale)), vh = std::max(1, int(v.source_h * scale));
@@ -561,7 +562,7 @@ static void editor(const EditorView &v)
     }
     // The result, as a home-screen tile.
     const int ix = 1196, iy = 238;
-    text("ZO KOMT HET OP JE PS4", font_small, ix, 220, 1824, background_at(220), Sub, true);
+    text(TR("HOW IT LOOKS ON YOUR PS4", "ZO KOMT HET OP JE PS4"), font_small, ix, 220, 1824, background_at(220), Sub, true);
     if (v.adjusting)  // the icon is what the controller works on now
         round_rect(ix - 20, iy - 20, 552, 552, 34, Accent, background_at(iy));
     round_rect(ix - 14, iy - 14, 540, 540, 30, Card, v.adjusting ? Accent : background_at(iy));
@@ -579,14 +580,14 @@ static void editor(const EditorView &v)
     rect(96, fy - 26, 1728, 2, Line);
     text(v.status.c_str(), font_small, 96, fy + 22, 1000, background_at(fy + 22), Warn);
     if (!v.adjusting) {
-        hints({{Button::DPad, "Afbeelding kiezen"}, {Button::Square, "Raster"}, {Button::Cross, "Deze gebruiken"},
-               {Button::Circle, "Terug"}},
+        hints({{Button::DPad, TR("Choose picture", "Afbeelding kiezen")}, {Button::Square, TR("Grid", "Raster")}, {Button::Cross, TR("Use this one", "Deze gebruiken")},
+               {Button::Circle, TR("Back", "Terug")}},
               1824, fy + 10, background_at(fy + 10));
     } else {
-        hints({{Button::DPad, "Verplaatsen"}, {Button::R2, "Zoom"}, {Button::Square, "Hele afbeelding"},
-               {Button::Triangle, "Opnieuw"}},
+        hints({{Button::DPad, TR("Move", "Verplaatsen")}, {Button::R2, "Zoom"}, {Button::Square, TR("Whole picture", "Hele afbeelding")},
+               {Button::Triangle, TR("Reset", "Opnieuw")}},
               1824, fy + 10, background_at(fy + 10));
-        hints({{Button::Cross, "Opslaan als icoon"}, {Button::Circle, "Andere afbeelding"}}, 1824, fy + 62,
+        hints({{Button::Cross, TR("Save as icon", "Opslaan als icoon")}, {Button::Circle, TR("Other picture", "Andere afbeelding")}}, 1824, fy + 62,
               background_at(fy + 62));
     }
 }
@@ -597,7 +598,7 @@ static void editor_grid(const EditorView &v)
     background();
     char counter[64];
     snprintf(counter, sizeof(counter), "%d / %d", v.current + 1, int(v.sources.size()));
-    header("Icoon kiezen", v.game.c_str(), nullptr, counter);
+    header(TR("Choose icon", "Icoon kiezen"), v.game.c_str(), nullptr, counter);
     const int gap = 20, labelH = 40;
     const int x0 = (ScreenW - (GridColumns * GridCellSize + (GridColumns - 1) * gap)) / 2, y0 = 182;
     for (int row = 0; row < GridRows; ++row)
@@ -614,7 +615,7 @@ static void editor_grid(const EditorView &v)
             if (i < int(v.cells.size()) && v.cells[i])
                 picture(v.cells[i], GridCellSize, x, y, 16);
             else
-                text_center("laden...", font_small, x + GridCellSize / 2, y + GridCellSize / 2 + 8, on ? CardHi : Card, Sub);
+                text_center(TR("loading...", "laden..."), font_small, x + GridCellSize / 2, y + GridCellSize / 2 + 8, on ? CardHi : Card, Sub);
             // "app-icoon 3  (1024x1024)" -> "app-icoon 3"
             std::string label = v.sources[i];
             const size_t cut = label.find("  (");
@@ -627,8 +628,8 @@ static void editor_grid(const EditorView &v)
     rect(96, fy - 26, 1728, 2, Line);
     text(v.sources[v.current].c_str(), font_body, 96, fy + 14, 900, background_at(fy + 14), Text, true);
     text(v.status.c_str(), font_small, 96, fy + 56, 1100, background_at(fy + 56), Warn);
-    hints({{Button::DPad, "Kiezen"}, {Button::R1, "Pagina"}, {Button::Square, "Lijst"}, {Button::Cross, "Gebruiken"},
-           {Button::Circle, "Terug"}},
+    hints({{Button::DPad, TR("Select", "Kiezen")}, {Button::R1, TR("Page", "Pagina")}, {Button::Square, TR("List", "Lijst")}, {Button::Cross, TR("Use", "Gebruiken")},
+           {Button::Circle, TR("Back", "Terug")}},
           1824, fy + 10, background_at(fy + 10));
 }
 

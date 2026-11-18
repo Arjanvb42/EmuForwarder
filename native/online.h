@@ -1,4 +1,5 @@
 #pragma once
+#include "lang.h"
 // EmuForwarder's settings, HTTPS (the PS4's own libSceHttp + libSceSsl) and SteamGridDB, plus the
 // PS4's on-screen keyboard to type the SteamGridDB API key.
 //
@@ -52,6 +53,8 @@ static void load_settings()
             settings.steamgriddb = value != "uit";
         else if (key == "alleen_steamgriddb")
             settings.only_steamgriddb = value == "aan";
+        else if (key == "taal")
+            lang::dutch = value == "nl";
         else if (key == "updates_zoeken")
             settings.auto_update = value != "uit";
         else if (key == "muziek")
@@ -69,9 +72,10 @@ static bool save_settings()
     FILE *file = fopen(pending, "w");
     if (!file)
         return false;
-    fprintf(file, "# EmuForwarder-instellingen\nsteamgriddb_key=%s\nsteamgriddb=%s\nalleen_steamgriddb=%s\nupdates_zoeken=%s\nmuziek=%s\nmuziek_volume=%d\n",
+    fprintf(file, "# EmuForwarder-instellingen\nsteamgriddb_key=%s\nsteamgriddb=%s\nalleen_steamgriddb=%s\nupdates_zoeken=%s\nmuziek=%s\nmuziek_volume=%d\ntaal=%s\n",
             settings.steamgriddb_key.c_str(), settings.steamgriddb ? "aan" : "uit", settings.only_steamgriddb ? "aan" : "uit",
-            settings.auto_update ? "aan" : "uit", settings.music ? "aan" : "uit", settings.music_volume);
+            settings.auto_update ? "aan" : "uit", settings.music ? "aan" : "uit", settings.music_volume,
+            lang::dutch ? "nl" : "en");
     const bool ok = fclose(file) == 0 && rename(pending, SettingsFile) == 0;
     if (!ok)
         unlink(pending);
@@ -222,13 +226,13 @@ static std::vector<Image> steamgriddb_images(const std::string &title, std::stri
     std::string answer;
     int status = api("/search/autocomplete/" + url_encode(title), answer);
     if (status == 401 || status == 403) {
-        error = "SteamGridDB weigert de sleutel";
+        error = TR("SteamGridDB refuses the key", "SteamGridDB weigert de sleutel");
         return images;
     }
     const std::vector<std::string> found = json_objects(answer);
     const long id = found.empty() ? -1 : json_number(found[0], "id");
     if (status != 200 || id < 0) {
-        error = status < 0 ? "SteamGridDB niet bereikbaar" : "SteamGridDB kent deze game niet";
+        error = status < 0 ? TR("SteamGridDB can't be reached", "SteamGridDB niet bereikbaar") : TR("SteamGridDB doesn't know this game", "SteamGridDB kent deze game niet");
         return images;
     }
     std::vector<Image> square, icons, tall, heroes, wide, logos;
@@ -276,14 +280,14 @@ static std::vector<Image> steamgriddb_images(const std::string &title, std::stri
             images.push_back(image);
         }
     };
-    add(square, "app-icoon");
-    add(icons, "icoon");
-    add(tall, "hoes");
+    add(square, TR("app icon", "app-icoon"));
+    add(icons, TR("icon", "icoon"));
+    add(tall, TR("cover", "hoes"));
     add(heroes, "banner");
-    add(wide, "brede banner");
+    add(wide, TR("wide banner", "brede banner"));
     add(logos, "logo");
     if (images.empty())
-        error = "SteamGridDB heeft geen afbeeldingen voor deze game";
+        error = TR("SteamGridDB has no pictures for this game", "SteamGridDB heeft geen afbeeldingen voor deze game");
     return images;
 }
 

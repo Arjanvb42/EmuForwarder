@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the EmuForwarder 1.0.0 promo video (1920x1080, 30 fps), in the Studio van Batenburg style:
-near-black, bold Montserrat headings, the website's colour gradient on the key words.
+"""Builds the EmuForwarder promo video (1920x1080, 30 fps) in the app's own look (native/ui.h): the dark
+blue gradient, the app's font, one blue accent, the header with the icon, the tab bar and the footer with button
+hints. No Nintendo artwork.
 
   python3 make_promo.py <material> <music.mp3> <out.mp4>
 
@@ -9,6 +10,7 @@ near-black, bold Montserrat headings, the website's colour gradient on the key w
              name, install0-3, installed)
   intro/     the app's intro, frame by frame (f_emuforwarder_000.png ...), from intro.h
   icons/     game icons as chosen on the PS4 (<hash>.png)
+  art/       box art of the library's USB games (GameTDB, by disc ID)
 and the app icons come from native/icons. The timing follows voiceover-script.md.
 """
 import math
@@ -20,13 +22,15 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = Path(__file__).resolve().parent
 ICONS = HERE.parents[1] / "native" / "icons"
-FONTS = Path("/usr/share/fonts/julietaula-montserrat-fonts")
+APP_FONT = HERE.parents[3] / "work/forwarder/OpenOrbis/PS4Toolchain/samples/font/assets/fonts/Gontserrat-Regular.ttf"
 W, H, FPS = 1920, 1080, 30
-BG = (11, 12, 15)
-WHITE = (240, 241, 244)
-GREY = (150, 153, 162)
-LINE = (42, 44, 52)
-SITE_GRADIENT = [(79, 209, 197), (91, 141, 239), (181, 126, 220), (240, 160, 90)]  # teal, blue, purple, orange
+# the app's colours (native/ui.h)
+BG, BG_LOW = (9, 12, 22), (14, 20, 38)
+CARD, CARD_HI = (22, 28, 46), (30, 40, 66)
+ACCENT, ACCENT_DEEP = (38, 132, 255), (20, 64, 150)
+WHITE, GREY = (240, 244, 252), (146, 160, 190)
+WARN, LINE = (255, 196, 92), (40, 50, 78)
+SITE_GRADIENT = ACCENT          # the highlighted words: the app's accent
 BLUE = [(56, 196, 240), (18, 104, 205)]
 ORANGE = [(255, 182, 56), (232, 88, 20)]
 
@@ -35,10 +39,10 @@ _fonts = {}
 
 
 def font(weight, size):
-    key = (weight, size)
-    if key not in _fonts:
-        _fonts[key] = ImageFont.truetype(str(FONTS / f"Montserrat-{weight}.otf"), size)
-    return _fonts[key]
+    """The app's own font (one weight, like on the PS4)."""
+    if size not in _fonts:
+        _fonts[size] = ImageFont.truetype(str(APP_FONT), size)
+    return _fonts[size]
 
 
 def clamp(t):
@@ -140,17 +144,12 @@ def rounded(img, radius, border=None, shadow=True):
 
 
 def background():
-    """Near-black with two very soft colour lights, like the website."""
-    img = Image.new("RGB", (W, H), BG)
-    glow = Image.new("L", (W, H), 0)
-    d = ImageDraw.Draw(glow)
-    d.ellipse((-300, 650, 700, 1500), fill=34)
-    glow = glow.filter(ImageFilter.GaussianBlur(180))
-    img.paste(Image.new("RGB", (W, H), (40, 110, 230)), (0, 0), glow)
-    glow2 = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(glow2).ellipse((1350, 700, 2300, 1500), fill=30)
-    glow2 = glow2.filter(ImageFilter.GaussianBlur(180))
-    img.paste(Image.new("RGB", (W, H), (230, 120, 40)), (0, 0), glow2)
+    """The app's background: BgLow at the top to Bg at the bottom."""
+    img = Image.new("RGB", (W, H))
+    d = ImageDraw.Draw(img)
+    for y in range(H):
+        k = y / H
+        d.line([(0, y), (W, y)], fill=tuple(int(BG_LOW[c] + (BG[c] - BG_LOW[c]) * k) for c in range(3)))
     return img.convert("RGBA")
 
 
@@ -158,10 +157,10 @@ BACKGROUND = background()
 
 
 # ---- material ------------------------------------------------------------------------------
-def screen(name, width=1248):
+def screen(name, width=1260):
     img = Image.open(MATERIAL / "screens" / f"{name}.png").convert("RGB")
     img = img.resize((width, round(width * 9 / 16)), Image.LANCZOS)
-    return rounded(img, 22, border=LINE)
+    return rounded(img, 18, border=LINE)
 
 
 def app_icon(name, size):
@@ -173,41 +172,84 @@ def game_icon(file, size, shadow=True):
                    size // 12, shadow=shadow)
 
 
-MARIO, POKEMON, PRINCE, CRASH, SUNSHINE, CHICKEN, DONALD = (
-    "371f58b92fdf3ed3.png", "b83aceb9591f7990.png", "e820c027c6d1a458.png", "629cbbeb3a75b802.png",
-    "8f683f8e0d54c6b5.png", "427c3ca440cce7ef.png", "c1717786ead90bc2.png")
+# game icons as chosen on the PS4 (no Nintendo games)
+PRINCE, CRASH, CHICKEN, DONALD = ("e820c027c6d1a458.png", "629cbbeb3a75b802.png", "427c3ca440cce7ef.png",
+                                  "c1717786ead90bc2.png")
 
 
 # ---- scene parts ---------------------------------------------------------------------------
-class Heading:
-    """Eyebrow, heading and subline at the top, sliding up into place."""
+STEPS = ["Find", "Artwork", "Name", "Install", "Play"]
+_header_icon = None
 
-    def __init__(self, eyebrow, heading_parts, sub, y=70, size=80):
-        self.eyebrow = text_image([(eyebrow, GREY)], 24, "SemiBold", tracking=5) if eyebrow else None
+
+def pill(text, fill, colour, size=26, pad=(22, 9)):
+    t = text_image([(text, colour)], size)
+    img = Image.new("RGBA", (t.width + 2 * pad[0], t.height + 2 * pad[1]), (0, 0, 0, 0))
+    ImageDraw.Draw(img).rounded_rectangle((0, 0, img.width - 1, img.height - 1), radius=img.height // 2, fill=fill)
+    img.alpha_composite(t, pad)
+    return img
+
+
+class Heading:
+    """The app's header: icon, title and a grey line under it, top left; on the step scenes the tab bar
+    (L1 Find Artwork Name Install Play R1) with the current step as the lit tab."""
+
+    def __init__(self, step, heading_parts, sub, y=40, size=64):
+        global _header_icon
+        if _header_icon is None:
+            _header_icon = Image.open(ICONS / "emuforwarder.png").convert("RGB").resize((96, 96), Image.LANCZOS).convert("RGBA")
         self.heading = text_image(heading_parts, size)
-        self.sub = text_image([(sub, GREY)], 34, "Medium") if sub else None
+        self.sub = text_image([(sub, GREY)], 30) if sub else None
+        self.step = step
+        self.tabs = None
+        if step is not None:
+            parts = [pill("L1", CARD_HI, GREY, 20, (12, 6))]
+            for k, name in enumerate(STEPS):
+                parts.append(pill(name, WHITE + (255,), BG, 28) if k == step else text_image([(name, GREY)], 28))
+            parts.append(pill("R1", CARD_HI, GREY, 20, (12, 6)))
+            width = sum(p.width for p in parts) + 30 * (len(parts) - 1)
+            tabs = Image.new("RGBA", (width, max(p.height for p in parts)), (0, 0, 0, 0))
+            x = 0
+            for p in parts:
+                tabs.alpha_composite(p, (x, (tabs.height - p.height) // 2))
+                x += p.width + 30
+            self.tabs = tabs
         self.y = y
 
     def draw(self, frame, t, alpha=1.0):
-        y = self.y
-        if self.eyebrow:
-            p = ease(phase(t, 0.0, 0.5))
-            put(frame, self.eyebrow, W / 2 - self.eyebrow.width / 2, y + 16 * (1 - p), p * alpha)
-            y += 52
-        p = ease(phase(t, 0.1, 0.65))
-        put(frame, self.heading, W / 2 - self.heading.width / 2, y + 24 * (1 - p), p * alpha)
-        y += self.heading.height + 26
+        p = ease(phase(t, 0.0, 0.5))
+        put(frame, _header_icon, 96, self.y + 10, p * alpha)
+        p = ease(phase(t, 0.1, 0.6))
+        put(frame, self.heading, 216 + 20 * (1 - p), self.y + 6, p * alpha)
         if self.sub:
-            p = ease(phase(t, 0.3, 0.85))
-            put(frame, self.sub, W / 2 - self.sub.width / 2, y + 16 * (1 - p), p * alpha)
+            p = ease(phase(t, 0.25, 0.75))
+            put(frame, self.sub, 218 + 20 * (1 - p), self.y + 16 + self.heading.height, p * alpha)
+        if self.tabs:
+            p = ease(phase(t, 0.2, 0.7))
+            put(frame, self.tabs, 96, self.y + 136, p * alpha)
 
 
-VERSION_TAG = text_image([("EmuForwarder 1.0.0", GREY)], 22, "SemiBold", tracking=2)
+VERSION_TAG = text_image([("Emulator game forwarder  -  v1.0.1", GREY)], 22)
+_hint = None
 
 
 def version_tag(frame, alpha):
-    d = ImageDraw.Draw(frame)
-    put(frame, VERSION_TAG, 64, H - 64 - VERSION_TAG.height, 0.8 * alpha)
+    """The app's footer: a line, the version left, a button hint right."""
+    global _hint
+    if _hint is None:
+        label = text_image([("Next", WHITE)], 24)
+        _hint = Image.new("RGBA", (label.width + 52, 34), (0, 0, 0, 0))
+        d = ImageDraw.Draw(_hint)
+        d.ellipse((2, 2, 31, 31), outline=(110, 150, 235), width=3)
+        d.line((10, 10, 23, 23), fill=(110, 150, 235), width=3)
+        d.line((23, 10, 10, 23), fill=(110, 150, 235), width=3)
+        _hint.alpha_composite(label, (44, 4))
+    a = int(255 * alpha)
+    if a <= 0:
+        return
+    ImageDraw.Draw(frame).line([(96, 1000), (W - 96, 1000)], fill=LINE + (a,), width=2)
+    put(frame, VERSION_TAG, 96, 1022, alpha)
+    put(frame, _hint, W - 96 - _hint.width, 1018, alpha)
 
 
 def screens_scene(heading, shots, duration):
@@ -222,7 +264,7 @@ def screens_scene(heading, shots, duration):
             a = phase(t, start, start + 0.35) if i else 1.0
             if nxt is not None and t >= nxt + 0.35:
                 continue
-            put(frame, shot, W / 2, 330 + shot.height / 2 - 60 + 40 * (1 - p), p * a * out, zoom, anchor="mm")
+            put(frame, shot, W / 2, 268 + shot.height / 2 - 60 + 40 * (1 - p), p * a * out, zoom, anchor="mm")
         version_tag(frame, out)
     return draw
 
@@ -239,42 +281,63 @@ def scene_intro():
     return draw, 4.0  # the intro (2.9 s), then a moment of black
 
 
+def cover_square(path, size):
+    """A box art's middle as a square (this also drops the band at the top of the box)."""
+    img = Image.open(path).convert("RGB")
+    side = min(img.size)
+    left, top = (img.width - side) // 2, (img.height - side) // 2
+    return rounded(img.crop((left, top, left + side, top + side)).resize((size, size), Image.LANCZOS), size // 12)
+
+
+def badge(text, fill=ACCENT_DEEP, colour=WHITE):
+    return pill(text, fill + (255,), colour, 20, (12, 5))
+
+
+def title_block(frame, t, out, icon, y):
+    """Icon, name and the app's subtitle, centred."""
+    p = ease_back(phase(t, 0.0, 0.8))
+    put(frame, icon, W / 2, y, clamp(p * 1.3) * out, 0.85 + 0.15 * p, anchor="mm")
+    p = ease(phase(t, 0.4, 1.0))
+    put(frame, TITLE_NAME, W / 2, y + 190 + 16 * (1 - p), p * out, anchor="mm")
+    put(frame, TITLE_SUB, W / 2, y + 268 + 16 * (1 - p), p * out, anchor="mm")
+
+
+TITLE_NAME = text_image([("EmuForwarder", WHITE)], 104)
+TITLE_SUB = text_image([("Emulator game forwarder  -  v1.0.1", GREY)], 34)
+
+
 def scene_title():
-    eyebrow = text_image([("EMUFORWARDER 1.0.0  ·  FOR PS4", GREY)], 24, "SemiBold", tracking=6)
-    line1 = text_image([("Your emulator games.", WHITE)], 104)
-    line2 = text_image([("Right on your home screen.", SITE_GRADIENT)], 104)
+    icon = app_icon("emuforwarder", 230)
+    line = text_image([("Your emulator games, right on your ", WHITE), ("PS4 home screen.", ACCENT)], 46)
     duration = 6.0
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 0.4, duration)
-        p = ease(phase(t, 0.0, 0.6))
-        put(frame, eyebrow, W / 2 - eyebrow.width / 2, 360 + 14 * (1 - p), p * out)
-        p = ease(phase(t, 0.25, 0.95))
-        put(frame, line1, W / 2 - line1.width / 2, 430 + 30 * (1 - p), p * out)
-        p = ease(phase(t, 0.7, 1.4))
-        put(frame, line2, W / 2 - line2.width / 2, 565 + 30 * (1 - p), p * out)
+        title_block(frame, t, out, icon, 300)
+        p = ease(phase(t, 1.1, 1.8))
+        put(frame, line, W / 2, 760 + 16 * (1 - p), p * out, anchor="mm")
     return draw, duration
 
 
 def scene_library():
-    h = Heading("01  ·  FIND", [("Every game in ", WHITE), ("one library", SITE_GRADIENT)],
+    h = Heading(0, [("Every game in ", WHITE), ("one library", ACCENT)],
                 "GameCube games and everything Retrocade downloaded.")
     return screens_scene(h, [(0, screen("lib")), (4.6, screen("menu"))], 8.0), 8.0
 
 
 def scene_artwork():
-    h = Heading("02  ·  ARTWORK", [("Pick the ", WHITE), ("perfect icon", SITE_GRADIENT)],
+    h = Heading(1, [("Pick the ", WHITE), ("perfect icon", ACCENT)],
                 "From SteamGridDB, GameTDB and libretro. Move and zoom until it's right.")
     return screens_scene(h, [(0, screen("grid")), (2.4, screen("grid2")), (4.8, screen("editor"))], 9.0), 9.0
 
 
 def scene_name():
-    h = Heading("03  ·  NAME", [("Its ", WHITE), ("own name", SITE_GRADIENT)], "Keep the game's name, or type your own.")
+    h = Heading(2, [("Its ", WHITE), ("own name", ACCENT)], "Keep the game's name, or type your own.")
     return screens_scene(h, [(0, screen("name"))], 7.0), 7.0
 
 
 def scene_install():
-    h = Heading("04  ·  INSTALL", [("One press. ", WHITE), ("Installed.", SITE_GRADIENT)],
+    h = Heading(3, [("One press. ", WHITE), ("Installed.", ACCENT)],
                 "EmuForwarder builds and installs the tile, right on the console.")
     shots = [(0, screen("install0")), (1.4, screen("install1")), (2.6, screen("install2")), (3.6, screen("install3")),
              (4.6, screen("installed"))]
@@ -282,98 +345,97 @@ def scene_install():
 
 
 def scene_home():
-    """A console home screen (no brand): the new tile slides in, gets focus and opens."""
+    """The home screen: the new tile slides in, gets focus and opens."""
     duration = 10.0
-    size, big, gap, y = 196, 300, 26, 470
-    tiles = [app_icon(name, size) if kind is None else game_icon(name, size)
-             for kind, name in [(None, "emuforwarder"), (None, "efupdater"), (1, POKEMON), (1, PRINCE), (1, CRASH),
-                                (1, SUNSHINE)]]
-    mario_big = game_icon(MARIO, big)
-    mario_full = Image.open(MATERIAL / "icons" / MARIO).convert("RGB").resize((W, W), Image.LANCZOS)
-    title = text_image([("Mario Kart DS", WHITE)], 40, "Bold")
-    hint_text = text_image([("Starting in EmuSuNi...", WHITE)], 30, "SemiBold")
+    size, big, gap, y = 196, 300, 26, 520
+    tiles = [app_icon("emuforwarder", size), app_icon("efupdater", size)] + [game_icon(f, size) for f in (PRINCE, CHICKEN, DONALD)]
+    hero_big = game_icon(CRASH, big)
+    hero_full = Image.open(MATERIAL / "icons" / CRASH).convert("RGB").resize((W, W), Image.LANCZOS)
+    title = text_image([("Crash Nitro Kart", WHITE)], 40)
+    hint_text = text_image([("Starting in DolphinPS4...", WHITE)], 30)
     hint = Image.new("RGBA", (hint_text.width + 64, hint_text.height + 32), (0, 0, 0, 0))
     ImageDraw.Draw(hint).rounded_rectangle((0, 0, hint.width - 1, hint.height - 1), radius=hint.height // 2,
-                                           fill=(11, 12, 15, 225))
+                                           fill=CARD + (235,), outline=ACCENT, width=3)
     hint.alpha_composite(hint_text, (32, 16))
-    sky = Image.new("RGB", (W, H))
-    top, bottom = (16, 32, 72), (5, 9, 22)
-    for yy in range(H):
-        k = yy / H
-        ImageDraw.Draw(sky).line([(0, yy), (W, yy)], fill=tuple(int(top[c] + (bottom[c] - top[c]) * k) for c in range(3)))
-    sky = sky.convert("RGBA")
-    caption = Heading(None, [("Straight into ", WHITE), ("the game", SITE_GRADIENT)],
-                      "No menus in between: the tile opens the game in its emulator.", y=80, size=72)
+    caption = Heading(4, [("Straight into ", WHITE), ("the game", ACCENT)],
+                      "No menus in between: the tile opens the game in its emulator.")
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 0.4, duration)
-        frame.alpha_composite(sky)
-        caption.draw(frame, t - 0.3, out * (1 - phase(t, 6.4, 6.9)))
+        caption.draw(frame, t, out * (1 - phase(t, 6.4, 6.9)))
         slide = ease_back(phase(t, 1.0, 1.8))
         focus = ease(phase(t, 2.2, 2.9))
         launch = ease(phase(t, 6.4, 7.6))
         x = 140
-        # the new tile goes first (focused), the others move aside for it
         for i, tile in enumerate([None] + tiles):
             if i == 0:
                 w = size + (big - size) * focus
                 if slide > 0:
-                    sc = w / big                                   # mario_big is big + 2*60 shadow pad
+                    sc = w / big                                   # hero_big is big + 2*60 shadow pad
                     yy = y - (w - size) + 80 * (1 - slide)         # grows upward, bottom stays in line
-                    put(frame, mario_big, x - 60 * sc, yy - 60 * sc, clamp(slide * 1.4) * (1 - launch) * out, sc)
-                    if focus > 0:
-                        put(frame, title, x, y + size + 24, focus * (1 - launch) * out)
+                    a = clamp(slide * 1.4) * (1 - launch) * out
+                    put(frame, hero_big, x - 60 * sc, yy - 60 * sc, a, sc)
+                    if focus > 0:  # the app's selection: an accent frame
+                        ImageDraw.Draw(frame).rounded_rectangle((x - 8, yy - 8, x + w + 8, yy + w + 8), radius=int(w / 12) + 8,
+                                                                outline=ACCENT + (int(255 * focus * a),), width=6)
+                        put(frame, title, x, y + size + 30, focus * (1 - launch) * out)
                 x += (w + gap) * clamp(slide * 1.2)
             else:
                 put(frame, tile, x - 60, y - 60, out * (1 - launch))
                 x += size + gap
         if launch > 0:
             # the game's artwork grows from the tile to the screen, like a game starting
-            s = big / W + (1 - big / W) * launch   # from the tile's size to covering the screen
-            img = mario_full.resize((round(W * s), round(W * s)), Image.BILINEAR).convert("RGBA")
+            s = big / W + (1 - big / W) * launch
+            img = hero_full.resize((round(W * s), round(W * s)), Image.BILINEAR).convert("RGBA")
             cx = 140 + big / 2 + (W / 2 - 140 - big / 2) * launch
             cy = y - (big - size) + big / 2 + (H / 2 - (y - (big - size) + big / 2)) * launch
             put(frame, img, cx, cy, out, anchor="mm")
-            veil = Image.new("RGBA", (W, H), (0, 0, 0, int(110 * phase(t, 7.6, 8.2))))
-            frame.alpha_composite(veil)
+            frame.alpha_composite(Image.new("RGBA", (W, H), (0, 0, 0, int(110 * phase(t, 7.6, 8.2)))))
             put(frame, hint, W / 2, H - 140, phase(t, 7.8, 8.4) * out, anchor="mm")
+        else:
+            version_tag(frame, out)
     return draw, duration
 
 
 def scene_emulators():
     duration = 8.0
-    h = Heading("WORKS TODAY WITH", [("Two ", WHITE), ("emulators", SITE_GRADIENT)], "In EmuForwarder 1.0.0.")
+    h = Heading(None, [("Two ", WHITE), ("emulators", ACCENT), (" today", WHITE)], "What EmuForwarder 1.0.1 works with.")
 
-    def card(name, systems, colours):
-        c = Image.new("RGBA", (640, 320), (0, 0, 0, 0))
+    def card(name, systems, selected):
+        c = Image.new("RGBA", (660, 330), (0, 0, 0, 0))
         d = ImageDraw.Draw(c)
-        d.rounded_rectangle((0, 0, 639, 319), radius=28, fill=(20, 21, 26), outline=LINE, width=2)
-        bar = gradient_strip(colours, 560, 8)
-        c.paste(bar, (40, 40))
-        c.alpha_composite(text_image([(name, WHITE)], 64), (36, 82))
-        y = 190
+        d.rounded_rectangle((0, 0, 659, 329), radius=22, fill=CARD_HI if selected else CARD,
+                            outline=ACCENT if selected else LINE, width=5 if selected else 2)
+        c.alpha_composite(badge("EMULATOR"), (44, 44))
+        c.alpha_composite(text_image([(name, WHITE)], 70), (42, 98))
+        y = 210
         for line in systems:
-            c.alpha_composite(text_image([(line, GREY)], 32, "Medium"), (40, y))
+            c.alpha_composite(text_image([(line, GREY)], 32), (44, y))
             y += 46
-        return rounded(c, 28, shadow=True)
-    cards = [card("DolphinPS4", ["GameCube"], BLUE), card("EmuSuNi", ["Nintendo DS, Game Boy Advance", "and more"], ORANGE)]
+        return rounded(c, 22, shadow=True)
+    cards = [(card("DolphinPS4", ["GameCube games"], False), card("DolphinPS4", ["GameCube games"], True)),
+             (card("EmuSuNi", ["Retrocade games:", "DS, GBA and more"], False), card("EmuSuNi", ["Retrocade games:", "DS, GBA and more"], True))]
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 0.4, duration)
         h.draw(frame, t, out)
-        for i, c in enumerate(cards):
+        for i, (plain, lit) in enumerate(cards):
             p = ease(phase(t, 0.7 + i * 0.35, 1.4 + i * 0.35))
-            put(frame, c, W / 2 + (i - 0.5) * 720, 640 + 50 * (1 - p), p * out, anchor="mm")
+            sel = 1.0 if (t < 4.3) == (i == 0) else 0.0   # the selection moves like in the app
+            x, y = W / 2 + (i - 0.5) * 740, 610 + 50 * (1 - p)
+            put(frame, plain, x, y, p * out * (1 - sel), anchor="mm")
+            put(frame, lit, x, y, p * out * sel, anchor="mm")
         version_tag(frame, out)
     return draw, duration
 
 
 def scene_real_games():
     duration = 6.0
-    h = Heading("REAL GAMES", [("Forwards are ", WHITE), ("games", SITE_GRADIENT), (" to your PS4", WHITE)],
-                "They even show up in apps like Itemzflow.")
-    icons = [game_icon(f, 170) for f in (MARIO, POKEMON, PRINCE, CRASH, SUNSHINE, CHICKEN, DONALD)]
-    tag = text_image([("GAME", (11, 12, 15))], 20, "Bold", tracking=2)
+    h = Heading(None, [("Forwards are ", WHITE), ("real games", ACCENT)], "They even show up in apps like Itemzflow.")
+    art = MATERIAL / "art"
+    icons = [game_icon(f, 170) for f in (CRASH, PRINCE, CHICKEN, DONALD)] + \
+            [cover_square(art / f"{c}.png", 170) for c in ("G9RP7D", "GP2EAF", "GYRE41")]
+    tag = badge("GAME")
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 0.4, duration)
@@ -382,84 +444,78 @@ def scene_real_games():
         for i, ic in enumerate(icons):
             p = ease_back(phase(t, 0.6 + i * 0.12, 1.1 + i * 0.12))
             x = W / 2 - total / 2 + i * 196 + 85
-            put(frame, ic, x, 640, clamp(p * 1.5) * out, 0.85 + 0.15 * p, anchor="mm")
+            put(frame, ic, x, 600, clamp(p * 1.5) * out, 0.85 + 0.15 * p, anchor="mm")
             q = phase(t, 1.8 + i * 0.1, 2.2 + i * 0.1)
-            if q > 0:
-                pill = Image.new("RGBA", (tag.width + 28, tag.height + 16), (0, 0, 0, 0))
-                ImageDraw.Draw(pill).rounded_rectangle((0, 0, pill.width - 1, pill.height - 1), radius=pill.height // 2,
-                                                       fill=(222, 223, 226, 255))
-                pill.alpha_composite(tag, (14, 8))
-                put(frame, pill, x, 760, q * out, anchor="mm")
+            put(frame, tag, x, 725, q * out, anchor="mm")
         version_tag(frame, out)
     return draw, duration
 
 
 def scene_updates():
     duration = 6.0
-    h = Heading("UPDATES", [("New versions ", WHITE), ("arrive by themselves", SITE_GRADIENT)],
+    h = Heading(None, [("Updates ", WHITE), ("arrive by themselves", ACCENT)],
                 "EmuForwarder finds them, EFUpdater installs them in one go.")
     ef, up = app_icon("emuforwarder", 260), app_icon("efupdater", 260)
-    v1 = text_image([("1.0.0", GREY)], 34, "Bold")
-    v2 = text_image([("1.0.1", ORANGE)], 34, "Bold")
+    v1 = text_image([("v1.0.1", GREY)], 34)
+    v2 = text_image([("v1.1.0", ACCENT)], 34)
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 0.4, duration)
         h.draw(frame, t, out)
         p = ease(phase(t, 0.6, 1.2))
-        put(frame, ef, W / 2 - 330, 640, p * out, anchor="mm")
+        put(frame, ef, W / 2 - 330, 600, p * out, anchor="mm")
         q = ease(phase(t, 1.0, 1.6))
-        put(frame, up, W / 2 + 330, 640, q * out, anchor="mm")
-        # a dot travelling from one to the other, then the version ticking over
+        put(frame, up, W / 2 + 330, 600, q * out, anchor="mm")
         k = phase(t, 1.8, 3.0)
         if 0 < k < 1:
             d = ImageDraw.Draw(frame)
             for j in range(5):
                 kk = clamp(k - j * 0.05)
                 xx = W / 2 - 160 + 320 * ease(kk)
-                d.ellipse((xx - 9, 631, xx + 9, 649), fill=(255, 182, 56, int(255 * (1 - j * 0.18))))
-        put(frame, v1, W / 2 - 330, 830, p * out * (1 - phase(t, 3.0, 3.4)), anchor="mm")
-        put(frame, v2, W / 2 - 330, 830, phase(t, 3.0, 3.4) * out, anchor="mm")
+                d.ellipse((xx - 9, 591, xx + 9, 609), fill=ACCENT + (int(255 * (1 - j * 0.18)),))
+        put(frame, v1, W / 2 - 330, 790, p * out * (1 - phase(t, 3.0, 3.4)), anchor="mm")
+        put(frame, v2, W / 2 - 330, 790, phase(t, 3.0, 3.4) * out, anchor="mm")
         version_tag(frame, out)
     return draw, duration
 
 
 def scene_roadmap():
     duration = 14.0
-    h = Heading("WHAT'S NEXT", [("Just ", WHITE), ("getting started", SITE_GRADIENT)], None)
+    h = Heading(None, [("What's ", WHITE), ("next", ACCENT)], "EmuForwarder is just getting started.")
     items = [
         (0.8, "More emulators", "Like RetroArch and Crema."),
         (4.8, "A PS5 version", "Work starts once the jailbreak for PS5 firmware 14.20 is out."),
         (8.6, "Smaller forwards", "About 200 MB today, because the emulator travels inside. Getting smaller."),
     ]
-    rows = [(start, text_image([(title, WHITE)], 50, "ExtraBold"), text_image([(sub, GREY)], 30, "Medium"))
-            for start, title, sub in items]
-    number = [text_image([(f"0{i + 1}", SITE_GRADIENT)], 50, "ExtraBold") for i in range(3)]
+    rows = []
+    for start, title, sub in items:
+        c = Image.new("RGBA", (1300, 170), (0, 0, 0, 0))
+        ImageDraw.Draw(c).rounded_rectangle((0, 0, 1299, 169), radius=20, fill=CARD, outline=LINE, width=2)
+        rows.append((start, c, text_image([(title, WHITE)], 46), text_image([(sub, GREY)], 30)))
+    numbers = [text_image([(f"{i + 1}", WHITE)], 40) for i in range(3)]
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 0.4, duration)
         h.draw(frame, t, out)
-        y = 330
-        for i, (start, title, sub) in enumerate(rows):
+        y = 290
+        for i, (start, box, title, sub) in enumerate(rows):
             p = ease(phase(t, start, start + 0.7))
-            x = 470 + 40 * (1 - p)
-            put(frame, number[i], x, y, p * out)
-            put(frame, title, x + 110, y, p * out)
-            put(frame, sub, x + 112, y + 70, p * out)
+            x = 310 + 40 * (1 - p)
+            put(frame, box, x, y, p * out)
+            d = ImageDraw.Draw(frame)
+            d.ellipse((x + 40, y + 45, x + 120, y + 125), fill=ACCENT + (int(255 * p * out),))
+            put(frame, numbers[i], x + 80, y + 85, p * out, anchor="mm")
+            put(frame, title, x + 160, y + 38, p * out)
+            put(frame, sub, x + 162, y + 98, p * out)
             if i == 2 and p > 0:
                 # the forward's size: a bar that shrinks
                 k = ease(phase(t, start + 1.4, start + 4.5))
-                full, now = 760, 760 * (1 - 0.6 * k)
-                d = ImageDraw.Draw(frame)
-                d.rounded_rectangle((x + 112, y + 130, x + 112 + full, y + 150), radius=10, fill=(30, 32, 38, int(255 * p * out)))
-                bar = gradient_strip(SITE_GRADIENT, max(2, int(now)), 20).convert("RGBA")
-                m = Image.new("L", bar.size, 0)
-                ImageDraw.Draw(m).rounded_rectangle((0, 0, bar.width - 1, 19), radius=10, fill=int(255 * p * out))
-                bar.putalpha(m)
-                frame.alpha_composite(bar, (round(x + 112), y + 130))
-                mb = text_image([("200 MB", GREY)], 26, "SemiBold")
-                smaller = text_image([("smaller", SITE_GRADIENT)], 26, "Bold")
-                put(frame, mb, x + 112 + full + 24, y + 128, p * out * (1 - k))
-                put(frame, smaller, x + 112 + full + 24, y + 128, p * out * k)
+                full, now = 1000, 1000 * (1 - 0.6 * k)
+                a = int(255 * p * out)
+                d.rounded_rectangle((x + 160, y + 200, x + 160 + full, y + 220), radius=10, fill=CARD_HI + (a,))
+                d.rounded_rectangle((x + 160, y + 200, x + 160 + now, y + 220), radius=10, fill=ACCENT + (a,))
+                put(frame, text_image([("200 MB", GREY)], 26), x + 160 + full + 24, y + 196, p * out * (1 - k))
+                put(frame, text_image([("smaller", ACCENT)], 26), x + 160 + full + 24, y + 196, p * out * k)
             y += 210
         version_tag(frame, out)
     return draw, duration
@@ -467,25 +523,19 @@ def scene_roadmap():
 
 def scene_outro():
     duration = 8.5
-    icon = app_icon("emuforwarder", 300)
-    name = text_image([("Emu", WHITE), ("Forwarder", BLUE)], 92)
-    version = text_image([("1.0.0", GREY)], 40, "Bold")
-    line = text_image([("It already works great, and it will ", WHITE), ("keep getting better.", SITE_GRADIENT)], 44, "Bold")
-    link = text_image([("github.com/Arjanvb42/EmuForwarder", GREY)], 30, "SemiBold")
-    studio = text_image([("STUDIO VAN BATENBURG", GREY)], 22, "SemiBold", tracking=6)
+    icon = app_icon("emuforwarder", 230)
+    line = text_image([("It already works great, and it will ", WHITE), ("keep getting better.", ACCENT)], 44)
+    link = text_image([("github.com/Arjanvb42/EmuForwarder", GREY)], 30)
+    studio = text_image([("Studio van Batenburg", GREY)], 24)
 
     def draw(frame, t):
         out = 1 - phase(t, duration - 1.2, duration)
-        p = ease_back(phase(t, 0.0, 0.8))
-        put(frame, icon, W / 2, 300, clamp(p * 1.3) * out, 0.85 + 0.15 * p, anchor="mm")
-        p = ease(phase(t, 0.5, 1.1))
-        put(frame, name, W / 2 - (name.width + 24 + version.width) / 2, 500 + 20 * (1 - p), p * out)
-        put(frame, version, W / 2 + (name.width + 24 + version.width) / 2 - version.width, 532 + 20 * (1 - p), p * out)
+        title_block(frame, t, out, icon, 270)
         p = ease(phase(t, 1.2, 1.9))
-        put(frame, line, W / 2, 690 + 16 * (1 - p), p * out, anchor="mm")
+        put(frame, line, W / 2, 720 + 16 * (1 - p), p * out, anchor="mm")
         p = ease(phase(t, 2.0, 2.6))
-        put(frame, link, W / 2, 790, p * out, anchor="mm")
-        put(frame, studio, W / 2, H - 90, p * out, anchor="mm")
+        put(frame, link, W / 2, 810, p * out, anchor="mm")
+        put(frame, studio, W / 2, H - 80, p * out, anchor="mm")
     return draw, duration
 
 
@@ -497,7 +547,7 @@ def main():
     print(f"{len(scenes)} scenes, {total:.1f} s", flush=True)
     cmd = ["ffmpeg", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
            "-i", "-", "-ss", "0", "-i", sys.argv[2],
-           "-filter_complex", f"[1:a]atrim=0:{total:.2f},afade=t=in:d=1.5,afade=t=out:st={total - 3.5:.2f}:d=3.5,volume=-2dB[a]",
+           "-filter_complex", f"[1:a]atrim=0:{total:.2f},afade=t=in:d=1.5,afade=t=out:st={total - 3.5:.2f}:d=3.5,volume=-6dB[a]",
            "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", out_path]
     ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
