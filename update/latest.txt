@@ -1,5 +1,5 @@
-build=23
-version=v0.23
-size=6619136
-fnv=346b5802e2a527be
-notes=Test van de pakket-update
+build=24
+version=v0.24
+size=5111808
+fnv=6eb8562f46749610
+notes=Updates installeren over de oude versie heen

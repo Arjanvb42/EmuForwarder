@@ -11,13 +11,15 @@ echo "$build" > native/VERSION
 bash native/build.sh
 git rm -q --cached --ignore-unmatch update/emuforwarder.self update/emuforwarder.prx
 rm -f update/emuforwarder.self update/emuforwarder.prx
-cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg update/EmuForwarder.pkg
+cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg update/EmuForwarder.pkg          # eerste installatie
+cp native/out/update/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg update/EmuForwarder-update.pkg   # update (patch)
+cp update/EmuForwarder-update.pkg "EmuForwarder-v0.$build-update.pkg"
 cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg "EmuForwarder-v0.$build.pkg"
 cp native/out/app.elf "EmuForwarder-v0.$build.elf"   # om crash.log-adressen te lezen
 python3 - "$build" "$notes" <<'PY'
 import sys
 build, notes = sys.argv[1], sys.argv[2]
-data = open("update/EmuForwarder.pkg", "rb").read()
+data = open("update/EmuForwarder-update.pkg", "rb").read()
 h = 1469598103934665603
 for b in data:
     h = ((h ^ b) * 1099511628211) & 0xFFFFFFFFFFFFFFFF

@@ -1,6 +1,7 @@
 # Pakketten en programma's horen niet in git (de tegels bevatten DolphinPS4/EmuSuNi).
 *.pkg
 !update/EmuForwarder.pkg
+!update/EmuForwarder-update.pkg
 *.elf
 native/out/
 tegels-v0.2/

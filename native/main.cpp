@@ -511,7 +511,7 @@ static void install_update()
         return;
     }
     snprintf(status, sizeof(status),
-             "%s staat in /data/pkg. Sluit EmuForwarder en installeer hem via GoldHEN > Package Installer.",
+             "Update %s staat in /data/pkg. Sluit EmuForwarder en installeer hem via GoldHEN > Package Installer.",
              update::latest.version.c_str());
 }
 

@@ -61,7 +61,8 @@ field DOWNLOAD_DATA_SIZE Integer 4 0
 field SYSTEM_VER Integer 4 0
 field TITLE Utf8 128 "EmuForwarder"
 field TITLE_ID Utf8 12 TGMA00001
-field VERSION Utf8 8 "$app_ver"
+# VERSION is the "master" version the updates (patches) belong to: it stays 01.00. APP_VER goes up.
+field VERSION Utf8 8 01.00
 (
     cd "$stage"
     "$bin/create-gp4" -out project.gp4 --content-id="$content_id" --files "eboot.bin"
@@ -69,3 +70,15 @@ field VERSION Utf8 8 "$app_ver"
     "$bin/PkgTool.Core" pkg_build project.gp4 "$out"
 )
 "$bin/PkgTool.Core" pkg_validate "$out/$content_id.pkg"
+
+# The same app as an update package (a patch, like a game update): the PS4 installs it over the
+# installed app, without "already installed".
+field CATEGORY Utf8 4 gp
+mkdir -p "$out/update"
+(
+    cd "$stage"
+    sed -i 's#<volume_type>pkg_ps4_app</volume_type>#<volume_type>pkg_ps4_patch</volume_type>#' project.gp4
+    grep -q pkg_ps4_patch project.gp4
+    "$bin/PkgTool.Core" pkg_build project.gp4 "$out/update"
+)
+"$bin/PkgTool.Core" pkg_validate "$out/update/$content_id.pkg"
