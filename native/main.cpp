@@ -488,7 +488,7 @@ static void open_settings(int keep_selected = 0)
     menu.items.push_back(std::string("Bij het starten naar updates zoeken: ") + (online::settings.auto_update ? "aan" : "uit"));
     menu.actions.push_back(AutoUpdateAction);
     if (update::done && update::newer()) {
-        menu.items.push_back("Bijwerken naar " + update::latest.version + " (nu " EF_VERSION ")");
+        menu.items.push_back(update::latest.version + " downloaden naar /data/pkg (nu " EF_VERSION ")");
         menu.actions.push_back(InstallUpdateAction);
     } else {
         menu.items.push_back(update::checking ? "Zoeken naar updates..." : "Nu naar updates zoeken (nu " EF_VERSION ")");
@@ -499,23 +499,20 @@ static void open_settings(int keep_selected = 0)
     menu.selected = std::min(keep_selected, int(menu.items.size()) - 1);
 }
 
-// Download the newer version, then start again so the starter picks it up.
+// Download the newer package to /data/pkg; it is installed with GoldHEN's Package Installer.
 static void install_update()
 {
     menu.open = false;
     snprintf(status, sizeof(status), "%s downloaden...", update::latest.version.c_str());
     draw();
     std::string error;
-    if (!update::install(error)) {
-        snprintf(status, sizeof(status), "Bijwerken lukte niet: %s.", error.c_str());
+    if (!update::download(error)) {
+        snprintf(status, sizeof(status), "Downloaden lukte niet: %s.", error.c_str());
         return;
     }
-    snprintf(status, sizeof(status), "%s staat klaar. EmuForwarder start opnieuw...", update::latest.version.c_str());
-    draw();
-    usleep(1200 * 1000);
-    const int32_t rc = sceSystemServiceLoadExec("/app0/eboot.bin", NULL);
-    sys::log("opnieuw starten: 0x%08x", unsigned(rc));
-    snprintf(status, sizeof(status), "%s staat klaar. Sluit EmuForwarder en start hem opnieuw.", update::latest.version.c_str());
+    snprintf(status, sizeof(status),
+             "%s staat in /data/pkg. Sluit EmuForwarder en installeer hem via GoldHEN > Package Installer.",
+             update::latest.version.c_str());
 }
 
 // Before a tile is made: show the name it gets, with the chance to change it.
@@ -531,7 +528,7 @@ static void open_update_question()
 {
     menu = Menu{};
     menu.open = menu.update = true;
-    menu.items = {"Nu bijwerken", "Later"};
+    menu.items = {"Downloaden naar /data/pkg", "Later"};
     menu.actions = {InstallUpdateAction, CancelAction};
 }
 
@@ -1986,7 +1983,7 @@ static int ef_app_main()
     // The system keeps its boot splash on top until the app hides it; without this
     // the app keeps running underneath while the screen stays on the boot image.
     sceSystemServiceHideSplashScreen();
-    update::started();  // this version starts fine: the starter may keep using it
+    update::remove_old_files();
     mkdir(music::Folder, 0777);
     music::enabled = online::settings.music;
     music::volume = online::settings.music_volume;
@@ -2106,7 +2103,4 @@ static int ef_app_main()
     }
 }
 
-// EmuForwarder runs as a module that the starter (loader.c) loads and calls, so a downloaded update
-// can run without reinstalling the package. main() is there for the plain program as a last resort.
-extern "C" __attribute__((visibility("default"))) int ef_main(void) { return ef_app_main(); }
 int main() { return ef_app_main(); }

@@ -1,5 +1,5 @@
-build=21
-version=v0.21
-size=2901696
-fnv=3736d8f7b77bdbd1
-notes=Achtergrondmuziek uit /data/PS4Tegelmaker/muziek
+build=22
+version=v0.22
+size=6619136
+fnv=bb72974882c8ce8a
+notes=Updates komen nu als pakket in /data/pkg

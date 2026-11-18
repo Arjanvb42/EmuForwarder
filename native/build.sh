@@ -42,26 +42,7 @@ sqlite="$tools/../sqlite/sqlite-amalgamation-3470200/sqlite3.c"
     -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog -lSceAudioOut \
     -o "$stage/.build/app.elf"
 mkdir -p "$out" && cp "$stage/.build/app.elf" "$out/app.elf"
-# The same program as a module (emuforwarder.prx): the starter loads it, and updates replace it.
-"$llvm/bin/ld.lld" -m elf_x86_64 -pie --script "$oo/link.x" --eh-frame-hdr -L"$oo/lib" \
-    "$stage/.build/"main.o "$stage/.build/"crash.o "$stage/.build/"graphics.o "$stage/.build/"sqlite3.o "$stage/.build/"vorbis.o \
-    -lc -lkernel -lc++ -lc++abi \
-    -lSceVideoOut -lSceFreeType -lSceSysmodule -lScePad -lSceUserService -lSceSystemService -lSceNet -lSceNetCtl \
-    -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog -lSceAudioOut \
-    "$oo/lib/crtlib.o" -o "$stage/.build/module.elf"
-cp "$stage/.build/module.elf" "$out/module.elf"
-"$bin/create-fself" -in "$stage/.build/module.elf" -out "$stage/.build/module.oelf" \
-    --lib "$stage/emuforwarder.prx" --paid 0x3800000000000011
-cp "$stage/emuforwarder.prx" "$out/emuforwarder.prx"
 "$bin/create-fself" -in "$stage/.build/app.elf" -out "$stage/.build/app.oelf" \
-    --eboot "$stage/emuforwarder.self" --paid 0x3800000000000011
-cp "$stage/emuforwarder.self" "$out/emuforwarder.self"
-# The starter (eboot.bin) starts the newest EmuForwarder: a downloaded update or the one above.
-"$llvm/bin/clang" --target=x86_64-pc-freebsd12-elf -fPIC -O2 -funwind-tables -Wall -Werror -DEF_BUILD=$build \
-    -isysroot "$oo" -isystem "$oo/include" -c "$native/loader.c" -o "$stage/.build/loader.o"
-"$llvm/bin/ld.lld" -m elf_x86_64 -pie --script "$oo/link.x" --eh-frame-hdr -L"$oo/lib" \
-    "$oo/lib/crt1.o" "$stage/.build/loader.o" -lc -lkernel -lSceSystemService -o "$stage/.build/loader.elf"
-"$bin/create-fself" -in "$stage/.build/loader.elf" -out "$stage/.build/loader.oelf" \
     --eboot "$stage/eboot.bin" --paid 0x3800000000000011
 printf "build=%s\nversion=%s\napp_ver=%s\n" "$build" "$label" "$app_ver" > "$out/build-info.txt"
 

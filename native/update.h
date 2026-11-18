@@ -1,15 +1,13 @@
 #pragma once
-// Updates from GitHub, without FTP or Package Installer.
-//
-// The package's eboot.bin is a small starter (loader.c): it loads the newest EmuForwarder module, which
-// is either the one inside the package (/app0/emuforwarder.prx) or a downloaded one in
-// /data/PS4Tegelmaker/update/. Updating only means downloading that one file, so the app never has
-// to reinstall itself while it runs.
+// Updates from GitHub: EmuForwarder looks for a newer version at start and downloads its package to
+// /data/pkg, ready for GoldHEN's Package Installer. One push to GitHub reaches every PS4 that has
+// the app; no FTP needed.
 //
 // On GitHub (public, so the PS4 needs no login):
-//   update/latest.txt         build=13 / version=v0.13 / size=<bytes> / fnv=<16 hex> / notes=<text>
-//   update/emuforwarder.prx   the program itself (a module the starter loads)
+//   update/latest.txt         build=22 / version=v0.22 / size=<bytes> / fnv=<16 hex> / notes=<text>
+//   update/EmuForwarder.pkg   the package
 
+#include <dirent.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <stdint.h>
@@ -28,10 +26,7 @@
 namespace update {
 
 static constexpr char Base[] = "https://raw.githubusercontent.com/Arjanvb42/EmuForwarder/main/update/";
-static constexpr char Folder[] = "/data/PS4Tegelmaker/update";
-static constexpr char SelfFile[] = "/data/PS4Tegelmaker/update/emuforwarder.prx";
-static constexpr char BuildFile[] = "/data/PS4Tegelmaker/update/build.txt";
-static constexpr char StartingFile[] = "/data/PS4Tegelmaker/update/starting";  // set by the starter
+static constexpr char PackageFolder[] = "/data/pkg";
 
 struct Latest {
     int build = 0;
@@ -119,56 +114,66 @@ static void check()
 
 static bool newer() { return latest.build > EF_BUILD; }
 
-// Called after the first screen: this version starts fine, the starter may keep loading it.
-static void started()
+// The folder and files the earlier self-update (v0.13-v0.21) used.
+static void remove_old_files()
 {
-    FILE *mark = fopen(StartingFile, "r");
-    if (!mark)
-        return;
-    fclose(mark);
-    unlink(StartingFile);
-    sys::log("gestart als gedownloade update");
+    static const char *const old[] = {"emuforwarder.self", "emuforwarder.self.kapot", "emuforwarder.prx",
+                                      "emuforwarder.prx.kapot", "build.txt", "starting", "attempt.txt",
+                                      "route.txt", "failed.txt", "starter.log"};
+    char path[96];
+    for (const char *name : old) {
+        snprintf(path, sizeof(path), "/data/PS4Tegelmaker/update/%s", name);
+        unlink(path);
+    }
+    rmdir("/data/PS4Tegelmaker/update");
 }
 
-// Download and store the newer version. The starter runs it from the next start on.
-static bool install(std::string &error)
+static std::string package_path(const std::string &version)
 {
-    std::vector<uint8_t> self;
-    const int status = online::get(std::string(Base) + "emuforwarder.prx", {}, self, 32 * 1024 * 1024);
+    return std::string(PackageFolder) + "/EmuForwarder-" + version + ".pkg";
+}
+
+// Download the newer package to /data/pkg (older EmuForwarder packages there are removed).
+static bool download(std::string &error)
+{
+    std::vector<uint8_t> package;
+    const int status = online::get(std::string(Base) + "EmuForwarder.pkg", {}, package, 64 * 1024 * 1024);
     if (status != 200) {
         error = status < 0 ? "downloaden mislukt" : "GitHub antwoordde " + std::to_string(status);
         return false;
     }
     char hash[20];
-    snprintf(hash, sizeof(hash), "%016llx", (unsigned long long)fnv64(self.data(), self.size()));
-    if (self.size() != latest.size || latest.fnv != hash) {
+    snprintf(hash, sizeof(hash), "%016llx", (unsigned long long)fnv64(package.data(), package.size()));
+    if (package.size() != latest.size || latest.fnv != hash) {
         error = "het gedownloade bestand klopt niet (probeer het over een paar minuten opnieuw)";
-        sys::log("update: %zu bytes, fnv %s; verwacht %zu, %s", self.size(), hash, latest.size, latest.fnv.c_str());
+        sys::log("update: %zu bytes, fnv %s; verwacht %zu, %s", package.size(), hash, latest.size, latest.fnv.c_str());
         return false;
     }
-    mkdir(Folder, 0777);
-    char pending[96];
-    snprintf(pending, sizeof(pending), "%s.tmp", SelfFile);
-    FILE *file = fopen(pending, "wb");
+    mkdir(PackageFolder, 0777);
+    const std::string target = package_path(latest.version), pending = target + ".tmp";
+    FILE *file = fopen(pending.c_str(), "wb");
     if (!file) {
-        error = "kan niet opslaan";
+        error = "kan niet opslaan in /data/pkg";
         return false;
     }
-    bool ok = fwrite(self.data(), 1, self.size(), file) == self.size();
+    bool ok = fwrite(package.data(), 1, package.size(), file) == package.size();
     ok = fclose(file) == 0 && ok;
-    ok = ok && rename(pending, SelfFile) == 0;
-    if (ok) {
-        unlink(StartingFile);
-        unlink("/data/PS4Tegelmaker/update/failed.txt");
-        FILE *build = fopen(BuildFile, "w");
-        ok = build && fprintf(build, "%d\n%s\n", latest.build, latest.version.c_str()) > 0;
-        ok = build && fclose(build) == 0 && ok;
-    }
+    ok = ok && rename(pending.c_str(), target.c_str()) == 0;
     if (!ok) {
-        unlink(pending);
-        error = "kan niet opslaan";
+        unlink(pending.c_str());
+        error = "kan niet opslaan in /data/pkg (genoeg ruimte?)";
+    } else if (DIR *dir = opendir(PackageFolder)) {
+        const std::string keep = target.substr(strlen(PackageFolder) + 1);
+        std::vector<std::string> old;
+        while (dirent *entry = readdir(dir))
+            if (!strncmp(entry->d_name, "EmuForwarder-v", 14) && strstr(entry->d_name, ".pkg") && keep != entry->d_name)
+                old.push_back(std::string(PackageFolder) + "/" + entry->d_name);
+        closedir(dir);
+        for (const std::string &path : old)
+            unlink(path.c_str());
     }
-    sys::log("update %s (build %d): %s", latest.version.c_str(), latest.build, ok ? "opgeslagen" : error.c_str());
+    sys::log("update %s (build %d) naar %s: %s", latest.version.c_str(), latest.build, target.c_str(),
+             ok ? "gedownload" : error.c_str());
     return ok;
 }
 
