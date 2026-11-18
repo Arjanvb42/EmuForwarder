@@ -1,5 +1,5 @@
-build=22
-version=v0.22
+build=23
+version=v0.23
 size=6619136
-fnv=bb72974882c8ce8a
-notes=Updates komen nu als pakket in /data/pkg
+fnv=346b5802e2a527be
+notes=Test van de pakket-update
