@@ -1,0 +1,9 @@
+# Pakketten en programma's horen niet in git (de tegels bevatten DolphinPS4/EmuSuNi).
+*.pkg
+*.elf
+native/out/
+tegels-v0.2/
+GameCube-pakketten/
+tile/
+verbinding.py
+__pycache__/
