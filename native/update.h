@@ -11,6 +11,7 @@
 //   update/emuforwarder.self  the program itself
 
 #include <pthread.h>
+#include <sys/stat.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,6 +119,30 @@ static void check()
 
 static bool newer() { return latest.build > EF_BUILD; }
 
+// Called after the first screen: when the starter started this program from a download, remember
+// the way that worked.
+static void started()
+{
+    FILE *mark = fopen(StartingFile, "r");
+    if (!mark)
+        return;
+    fclose(mark);
+    FILE *attempt = fopen("/data/PS4Tegelmaker/update/attempt.txt", "r");
+    int route = -1;
+    if (attempt) {
+        if (fscanf(attempt, "%d", &route) != 1)
+            route = -1;
+        fclose(attempt);
+    }
+    FILE *good = fopen("/data/PS4Tegelmaker/update/route.txt", "w");
+    if (good) {
+        fprintf(good, "%d\n", route);
+        fclose(good);
+    }
+    unlink(StartingFile);
+    sys::log("gestart als update (manier %d)", route);
+}
+
 // Download and store the newer version. The starter runs it from the next start on.
 static bool install(std::string &error)
 {
@@ -146,7 +171,20 @@ static bool install(std::string &error)
     ok = fclose(file) == 0 && ok;
     ok = ok && rename(pending, SelfFile) == 0;
     if (ok) {
+        // The system may only start it from the app's own folder: put a copy there too.
+        {
+            sys::Elevated elevated;
+            mkdir("/user/app/TGMA00001/update", 0777);
+            FILE *copy = fopen("/user/app/TGMA00001/update/emuforwarder.self.tmp", "wb");
+            bool copied = copy && fwrite(self.data(), 1, self.size(), copy) == self.size();
+            copied = copy && fclose(copy) == 0 && copied;
+            copied = copied && rename("/user/app/TGMA00001/update/emuforwarder.self.tmp",
+                                      "/user/app/TGMA00001/update/emuforwarder.self") == 0;
+            chmod("/user/app/TGMA00001/update/emuforwarder.self", 0777);
+            sys::log("update: kopie in /user/app/TGMA00001/update: %s", copied ? "gezet" : "mislukt");
+        }
         unlink(StartingFile);
+        unlink("/data/PS4Tegelmaker/update/failed.txt");
         FILE *build = fopen(BuildFile, "w");
         ok = build && fprintf(build, "%d\n%s\n", latest.build, latest.version.c_str()) > 0;
         ok = build && fclose(build) == 0 && ok;

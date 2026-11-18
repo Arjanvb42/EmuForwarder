@@ -1,5 +1,5 @@
-build=16
-version=v0.16
-size=2716896
-fnv=6523c5b454110e1c
-notes=Test van de nieuwe starter
+build=17
+version=v0.17
+size=2716960
+fnv=cf7323bf161240de
+notes=Tegel niet opnieuw installeren; starter probeert meer manieren

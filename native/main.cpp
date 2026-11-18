@@ -1398,12 +1398,20 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
         return false;
     }
     std::string error;
-    snprintf(status, sizeof(status), "%s installeren...", title);
-    draw();
-    const sys::Install result = sys::install(package, title_id, title, error, [&](int percent) {
-        snprintf(status, sizeof(status), "%s installeren... %d%%", title, percent);
+    // A tile that is already there (same or newer version) is not installed again: a new install
+    // brings back the package's own name and icon, which the home screen then keeps until a restart.
+    const std::string have = sys::installed_version(title_id), ours = sys::package_version(package);
+    sys::Install result = sys::Install::AlreadyThere;
+    if (have.empty() || ours.empty() || have < ours) {
+        snprintf(status, sizeof(status), "%s installeren...", title);
         draw();
-    });
+        result = sys::install(package, title_id, title, error, [&](int percent) {
+            snprintf(status, sizeof(status), "%s installeren... %d%%", title, percent);
+            draw();
+        });
+    } else {
+        sys::log("tegel %s staat er al (versie %s): niet opnieuw installeren", title_id, have.c_str());
+    }
     if (result == sys::Install::Failed) {
         // Fall back to GoldHEN's Package Installer.
         char destination[200];
@@ -1431,10 +1439,9 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
         usleep(2 * 1000 * 1000);
         named = sys::set_title(title_id, title);
     }
-    snprintf(status, sizeof(status), "%s staat op je home screen%s%s.", title,
-             named ? "" : " (naam niet aangepast)", iconed ? "" : " (icoon niet aangepast)");
-    if (result == sys::Install::AlreadyThere)
-        snprintf(status + strlen(status), sizeof(status) - strlen(status), " Zie je de oude naam of het oude icoon nog, herstart dan de PS4.");
+    // The home screen keeps the name and icon it read at install time until the PS4 restarts.
+    snprintf(status, sizeof(status), "%s staat klaar%s%s. Herstart de PS4 om de naam en het icoon op je home screen te zien.",
+             title, named ? "" : " (naam niet aangepast)", iconed ? "" : " (icoon niet aangepast)");
     return true;
 }
 
@@ -1961,7 +1968,7 @@ int main()
     // The system keeps its boot splash on top until the app hides it; without this
     // the app keeps running underneath while the screen stays on the boot image.
     sceSystemServiceHideSplashScreen();
-    unlink(update::StartingFile);  // this version starts fine: the starter may keep using it
+    update::started();  // this version starts fine: the starter may keep using it
     if (online::settings.auto_update)
         update::check();
     bool update_reported = false;
