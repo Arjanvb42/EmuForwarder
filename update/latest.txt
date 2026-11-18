@@ -1,5 +1,5 @@
-build=15
-version=v0.15
+build=16
+version=v0.16
 size=2716896
-fnv=b9b479eab8537c38
-notes=Naam van de tegel bevestigen of wijzigen
+fnv=6523c5b454110e1c
+notes=Test van de nieuwe starter
