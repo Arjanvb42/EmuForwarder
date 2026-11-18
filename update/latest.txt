@@ -1,5 +1,5 @@
-build=30
-version=v0.30
+build=31
+version=v0.31
 size=11796480
-fnv=2d6fb87a9e08132c
-notes=Iconen met plaatje en naam in de stijl van Studio van Batenburg
+fnv=cf9a85ab55cc2fe0
+notes=Iconen bijgeschaafd

@@ -129,7 +129,7 @@ def title(img, first, second, sub, accent_fill):
     spaced = " ".join("  ".join(sub.split(" ")))
     ws = probe.textlength(spaced, font=fs)
     m3, d3 = new_mask()
-    d3.text(((S - ws) / 2, y + size * 1.12), spaced, font=fs, fill=255)
+    d3.text(((S - ws) / 2, y + size * 1.2), spaced, font=fs, fill=255)  # clear of the p's descender
     paint(img, m3, DIM)
 
 
@@ -153,18 +153,23 @@ def forwarder():
     invader(di, 530 - 5.5 * 40, 730 - 4 * 40, 40)
     paint(img, inv, GREY)
     # the home screen: a panel with tiles, one lit in the accent colour
-    framed(img, (1180, 300, 1820, 1160), 90)
+    panel = (1220, 300, 1820, 1160)          # same centre height as the card (730)
+    edge, margin, gap = 40, 58, 46
+    framed(img, panel, 90, edge)
     tiles, dt = new_mask()
     lit, dl = new_mask()
+    inner_x, inner_y = panel[0] + edge + margin, panel[1] + edge + margin
+    tile_w = (panel[2] - panel[0] - 2 * (edge + margin) - gap) / 2
+    tile_h = (panel[3] - panel[1] - 2 * (edge + margin) - 2 * gap) / 3
     for r in range(3):
         for c in range(2):
-            box = (1290 + c * 220, 410 + r * 245, 1290 + c * 220 + 180, 410 + r * 245 + 200)
-            (dl if (r, c) == (0, 1) else dt).rounded_rectangle(box, radius=34, fill=255)
+            x, y = inner_x + c * (tile_w + gap), inner_y + r * (tile_h + gap)
+            (dl if (r, c) == (0, 1) else dt).rounded_rectangle((x, y, x + tile_w, y + tile_h), radius=30, fill=255)
     paint(img, tiles, DARK_TILE)
     paint(img, lit, accent)
-    # the arrow from the game to the tiles
+    # the arrow from the game to the tiles: straight across, in the middle of the gap
     arrow, da = new_mask()
-    straight_arrow(da, (870, 900), (1140, 660), 72, 160, 200)
+    straight_arrow(da, (885, 730), (1170, 730), 70, 150, 190)
     paint(img, arrow, accent)
     title(img, "Emu", "Forwarder", "EMULATOR FORWARDER", accent)
     return img
