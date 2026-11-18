@@ -40,13 +40,20 @@ link() {  # link <output.elf> <objects...>
         -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog -lSceAudioOut \
         -o "$output"
 }
-# A package folder with the font, the system modules and the icon: new_stage <folder> <icon.png>
+# The intros' parts and the boot splash (pic1), drawn from the icons.
+python3 "$native/icons/make_intro.py" "$work/intro" >/dev/null
+# A package folder with the font, the system modules, the icon, the intro and the boot splash:
+# new_stage <folder> <app: emuforwarder or efupdater>
 new_stage() {
     mkdir -p "$1/sce_sys/about" "$1/sce_module" "$1/assets/fonts"
     cp "$oo/samples/font/sce_module/"{libc,libSceFios2}.prx "$1/sce_module/"
     cp "$oo/samples/font/sce_sys/about/right.sprx" "$1/sce_sys/about/"
     cp "$oo/samples/font/assets/fonts/"{Gontserrat-Regular.ttf,OFL.txt} "$1/assets/fonts/"
-    cp "$2" "$1/sce_sys/icon0.png"
+    cp "$native/icons/$2.png" "$1/sce_sys/icon0.png"
+    cp "$work/intro/$2/pic1.png" "$1/sce_sys/pic1.png"
+    mkdir -p "$1/assets/intro"
+    cp -r "$work/intro/$2" "$1/assets/intro/"
+    rm "$1/assets/intro/$2/pic1.png"
 }
 # make_package <stage> <content id> <title id> <title> <app version> <output folder>
 make_package() {
@@ -85,7 +92,7 @@ done
 
 # EFUpdater (TGMA00002).
 updater_stage="$work/updater"
-new_stage "$updater_stage" "$native/icons/efupdater.png"
+new_stage "$updater_stage" efupdater
 link "$objects/updater.elf" "$objects/updater.o" "$objects/graphics.o" "$objects/sqlite3.o"
 "$bin/create-fself" -in "$objects/updater.elf" -out "$objects/updater.oelf" \
     --eboot "$updater_stage/eboot.bin" --paid 0x3800000000000011
@@ -94,7 +101,7 @@ make_package "$updater_stage" IV0000-TGMA00002_00-EMUFWDUPDATER000 TGMA00002 "EF
 
 # EmuForwarder (TGMA00001), with the Updater's package inside.
 stage="$work/app"
-new_stage "$stage" "$native/icons/emuforwarder.png"
+new_stage "$stage" emuforwarder
 cp "$work/updater-out/IV0000-TGMA00002_00-EMUFWDUPDATER000.pkg" "$stage/updater.pkg"
 link "$objects/app.elf" "$objects/main.o" "$objects/crash.o" "$objects/graphics.o" "$objects/sqlite3.o" "$objects/vorbis.o"
 cp "$objects/app.elf" "$out/app.elf"

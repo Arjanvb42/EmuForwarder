@@ -107,7 +107,7 @@ def arc_arrow(draw, cx, cy, r, width, start, end, head_len, head_width):
     draw.polygon(side_out + side_in, fill=255)
 
 
-def title(img, first, second, sub, accent_fill):
+def title(img, sub_img, first, second, sub, accent_fill):
     """The name: first part in grey, second part in the accent gradient, a spaced subtitle below."""
     probe = ImageDraw.Draw(Image.new("L", (1, 1)))
     size = 300
@@ -130,7 +130,7 @@ def title(img, first, second, sub, accent_fill):
     ws = probe.textlength(spaced, font=fs)
     m3, d3 = new_mask()
     d3.text(((S - ws) / 2, y + size * 1.2), spaced, font=fs, fill=255)  # clear of the p's descender
-    paint(img, m3, DIM)
+    paint(sub_img, m3, DIM)
 
 
 def framed(img, box, radius, edge=40):
@@ -144,18 +144,31 @@ def framed(img, box, radius, edge=40):
     paint(img, inner, (24, 25, 30))
 
 
-def forwarder():
+class Layers:
+    """Where each part is drawn: all on one tile (the icon), or each on its own transparent canvas
+    (the parts of the animated intro, see make_intro.py)."""
+
+    def __init__(self, tile=None):
+        self.tile, self.parts = tile, {}
+
+    def __call__(self, name):
+        if self.tile is not None:
+            return self.tile
+        return self.parts.setdefault(name, Image.new("RGBA", (S, S), (0, 0, 0, 0)))
+
+
+def forwarder(layers):
     accent = gradient((56, 196, 240), (18, 104, 205))
-    img = background((20, 90, 200))
     # the game: a card with the invader
-    framed(img, (230, 380, 830, 1080), 90)
+    card = layers("card")
+    framed(card, (230, 380, 830, 1080), 90)
     inv, di = new_mask()
     invader(di, 530 - 5.5 * 40, 730 - 4 * 40, 40)
-    paint(img, inv, GREY)
+    paint(card, inv, GREY)
     # the home screen: a panel with tiles, one lit in the accent colour
     panel = (1220, 300, 1820, 1160)          # same centre height as the card (730)
     edge, margin, gap = 40, 58, 46
-    framed(img, panel, 90, edge)
+    framed(layers("panel"), panel, 90, edge)
     tiles, dt = new_mask()
     lit, dl = new_mask()
     inner_x, inner_y = panel[0] + edge + margin, panel[1] + edge + margin
@@ -165,31 +178,33 @@ def forwarder():
         for c in range(2):
             x, y = inner_x + c * (tile_w + gap), inner_y + r * (tile_h + gap)
             (dl if (r, c) == (0, 1) else dt).rounded_rectangle((x, y, x + tile_w, y + tile_h), radius=30, fill=255)
-    paint(img, tiles, DARK_TILE)
-    paint(img, lit, accent)
+    paint(layers("panel"), tiles, DARK_TILE)
+    paint(layers("lit"), lit, accent)
     # the arrow from the game to the tiles: straight across, in the middle of the gap
     arrow, da = new_mask()
     straight_arrow(da, (885, 730), (1170, 730), 70, 150, 190)
-    paint(img, arrow, accent)
-    title(img, "Emu", "Forwarder", "EMULATOR FORWARDER", accent)
-    return img
+    paint(layers("arrow"), arrow, accent)
+    title(layers("title"), layers("subtitle"), "Emu", "Forwarder", "EMULATOR FORWARDER", accent)
 
 
-def updater():
+def updater(layers):
     accent = gradient((255, 182, 56), (232, 88, 20))
-    img = background((230, 100, 20))
     cx, cy, r = S // 2, 760, 500
     arrows, da = new_mask()
     arc_arrow(da, cx, cy, r, 96, 200, 335, 200, 270)
     arc_arrow(da, cx, cy, r, 96, 20, 155, 200, 270)
-    paint(img, arrows, accent)
+    paint(layers("ring"), arrows, accent)
     inv, di = new_mask()
     invader(di, cx - 5.5 * 58, cy - 4 * 58, 58)
-    paint(img, inv, GREY)
-    title(img, "EF", "Updater", "UPDATE TOOL", accent)
-    return img
+    paint(layers("invader"), inv, GREY)
+    title(layers("title"), layers("subtitle"), "EF", "Updater", "UPDATE TOOL", accent)
 
 
-for name, make in (("emuforwarder.png", forwarder), ("efupdater.png", updater)):
-    make().resize((512, 512), Image.LANCZOS).save(HERE / name, optimize=True)
-    print(HERE / name)
+APPS = {"emuforwarder": (forwarder, (20, 90, 200)), "efupdater": (updater, (230, 100, 20))}
+
+if __name__ == "__main__":
+    for name, (make, glow_colour) in APPS.items():
+        tile = background(glow_colour)
+        make(Layers(tile))
+        tile.resize((512, 512), Image.LANCZOS).save(HERE / f"{name}.png", optimize=True)
+        print(HERE / f"{name}.png")

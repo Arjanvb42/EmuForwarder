@@ -1,5 +1,5 @@
-build=31
-version=v0.31
-size=11796480
-fnv=cf9a85ab55cc2fe0
-notes=Iconen bijgeschaafd
+build=32
+version=v0.32
+size=12517376
+fnv=01d52e86ec068c76
+notes=Geanimeerde intro bij het opstarten

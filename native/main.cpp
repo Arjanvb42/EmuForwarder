@@ -21,6 +21,7 @@
 #include "online.h"
 #include "update.h"
 #include "music.h"
+#include "intro.h"
 
 extern "C" const char *ef_step;
 extern "C" void ef_install_crash_handler();
@@ -2000,23 +2001,37 @@ static int ef_app_main()
     scePadInit();
     const int pad = scePadOpen(user, 0, 0, NULL);
     uint32_t previous = 0;
-    ef_step = "zoeken";
-    scan();
-    sys::log("zoeken klaar: %d game(s)", count);
-    ef_step = "eerste scherm";
-    draw();
-    sys::log("eerste scherm getekend");
-    // The system keeps its boot splash on top until the app hides it; without this
-    // the app keeps running underneath while the screen stays on the boot image.
+    // The system keeps its boot splash (pic1: the intro's empty background) on top until the app
+    // hides it; then the animated intro plays, with the music and the update check already going.
     sceSystemServiceHideSplashScreen();
-    update::remove_old_files();
-    ensure_updater();
     mkdir(music::Folder, 0777);
     music::enabled = online::settings.music;
     music::volume = online::settings.music_volume;
     music::start();
     if (online::settings.auto_update)
         update::check();
+    ef_step = "intro";
+    intro::play(
+        "emuforwarder", [] { return scene->Pixels(); },
+        [] {
+            scene->SubmitFlip(frame);
+            scene->FrameWait(frame);
+            scene->FrameBufferSwap();
+            ++frame;
+        },
+        [pad] {
+            OrbisPadData input{};
+            return scePadReadState(pad, &input) >= 0 && (input.buttons & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE));
+        });
+    previous = ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE;  // a skip press is not also a menu press
+    ef_step = "zoeken";
+    scan();
+    sys::log("zoeken klaar: %d game(s)", count);
+    ef_step = "eerste scherm";
+    draw();
+    sys::log("eerste scherm getekend");
+    update::remove_old_files();
+    ensure_updater();
     bool update_reported = false;
 
     for (;;) {

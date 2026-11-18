@@ -19,6 +19,11 @@
 #include "graphics.h"
 #include "system.h"
 
+#define STBI_ONLY_PNG
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+#include "intro.h"
+
 #include <sstream>
 std::stringstream debugLogStream;  // used by graphics.cpp (OpenOrbis sample code)
 
@@ -95,8 +100,20 @@ int main()
     sceUserServiceGetInitialUser(&user);
     scePadInit();
     const int pad = scePadOpen(user, 0, 0, NULL);
-    show("Zoeken...", "Naar een nieuwe EmuForwarder in /data/pkg");
     sceSystemServiceHideSplashScreen();
+    intro::play(
+        "efupdater", [] { return scene->Pixels(); },
+        [] {
+            scene->SubmitFlip(frame);
+            scene->FrameWait(frame);
+            scene->FrameBufferSwap();
+            ++frame;
+        },
+        [pad] {
+            OrbisPadData input{};
+            return scePadReadState(pad, &input) >= 0 && (input.buttons & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE));
+        });
+    show("Zoeken...", "Naar een nieuwe EmuForwarder in /data/pkg");
 
     std::string version;
     std::string package;
