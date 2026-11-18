@@ -1,5 +1,5 @@
-build=26
-version=v0.26
+build=27
+version=v0.27
 size=11796480
-fnv=6c7e64f60b0a3197
-notes=EmuForwarder Updater installeert updates over de oude versie
+fnv=fcc100d42e3a1775
+notes=Test van de Updater
