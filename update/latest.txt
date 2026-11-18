@@ -1,5 +1,5 @@
-build=17
-version=v0.17
+build=18
+version=v0.18
 size=2716960
-fnv=cf7323bf161240de
-notes=Tegel niet opnieuw installeren; starter probeert meer manieren
+fnv=3f5570fb13b65c08
+notes=Test van de starter (2)
