@@ -1,66 +1,67 @@
-# EmuForwarder (draait op de PS4)
+# EmuForwarder 1.0.0
 
-EmuForwarder maakt tegels op het home screen van je PS4 die een game meteen in een emulator starten: GameCube in DolphinPS4, NDS/GBA/3DS en andere Retrocade-games in EmuSuNi. Alles gebeurt op de PS4 zelf (GoldHEN nodig).
+**Your emulator games as real tiles on the PS4 home screen.** EmuForwarder runs on the PS4 itself (GoldHEN). Pick a game, pick its artwork, and EmuForwarder installs a tile that starts that game straight in its emulator. No menus in between, no PC needed.
 
-## Installeren en bijwerken
+<!-- The promo video goes here: docs/EmuForwarder-promo.mp4 -->
 
-- **Eerste keer:** download [`update/EmuForwarder.pkg`](update/EmuForwarder.pkg) en installeer hem via **GoldHEN → Package Installer**.
-- **Updates:** bij het starten kijkt EmuForwarder op GitHub (`update/latest.txt`) of er een nieuwere versie is. Kies je **Downloaden**, dan zet hij het pakket in `/data/pkg`. Sluit de app en open **EFUpdater** (het oranje icoon) op je home screen: die verwijdert de oude versie en installeert de nieuwe in één keer. Je instellingen, iconen en muziek blijven bewaard. EmuForwarder zet EFUpdater zelf op je PS4. Je hebt geen pc of FTP nodig.
-- Zelf zoeken of het automatisch zoeken uitzetten: **Vierkant → Instellingen**.
-- **Nieuwe versie uitbrengen (pc):** `./publiceer.sh "wat er nieuw is"`. Dat verhoogt `native/VERSION`, bouwt het pakket en zet het op GitHub, voor iedereen tegelijk.
-- **Achtergrondmuziek:** zet je eigen `.ogg`- of `.wav`-bestanden (16-bit) in `/data/PS4Tegelmaker/muziek/`. Aan/uit en volume staan onder Instellingen.
+## What it does
 
-## Wat de app doet
+- **Finds your games**: GameCube games in `/data/DolphinPS4/games` (also from USB) and the games Retrocade downloaded to `/data/retrocade/games/<console>/`.
+- **Makes a tile per game**: with the game's own name (you can change it before the tile is made) and an icon you choose.
+- **Artwork from the internet**: SteamGridDB (with your free API key), GameTDB and libretro thumbnails. Browse them as a list or a full-screen grid, then move and zoom until the icon looks right.
+- **Installs the tile itself**: straight from the app. The tile opens the game directly in its emulator.
+- **Real games to the PS4**: forwards show up as games, also in apps like **Itemzflow**.
+- **Updates itself**: see [Updating](#updating).
+- **Extras**: background music (your own files) and an animated intro.
 
-- **GameCube-games** krijgen een tegel die DolphinPS4 meelevert. Het startscherm van de PS4 wordt verborgen, dus de hoes blijft niet over het spel hangen.
-- **NDS, 3DS, GBA en andere Retrocade-games** (uit `/data/retrocade/games/<console>/`) krijgen een tegel **Retro 1 t/m 4**, die het spel in EmuSuNi start.
-- **Zelf het icoon kiezen.** Druk bij een game op **Options**. De app haalt afbeeldingen op en laat zien hoe het icoon wordt.
-- **Oude pakketten worden vervangen.** Staat er in `/data/pkg` een oude versie van een tegel, dan zet de app de nieuwe klaar.
+## Supported emulators (1.0.0)
 
-## Bediening
-
-Je games staan als kaarten met hun hoes. Voorbeelden van de schermen staan in `voorbeeld/`.
-
-| Knop | Wat het doet |
+| Emulator | Systems |
 | --- | --- |
-| Pijltjes | Door je games bladeren |
-| L1 / R1 | Console kiezen (Alles, GameCube, NDS, GBA, ...) |
-| X | Menu voor de game: tegel maken of bijwerken, icoon kiezen, naar de interne schijf zetten |
-| Options | Meteen het icoon kiezen |
-| Driehoek | Opnieuw zoeken (bijvoorbeeld na het aansluiten van een USB-stick) |
-| Rondje (2x) | Afsluiten |
+| **DolphinPS4** | GameCube |
+| **EmuSuNi** | Nintendo DS, Game Boy Advance and the other Retrocade systems |
 
-Een groen vinkje op een kaart betekent dat de tegel op je PS4 staat. **USB** betekent dat de game nog naar de interne schijf moet.
+## Install
 
-## Een tegel maken
+1. A PS4 with **GoldHEN**.
+2. Download [`update/EmuForwarder.pkg`](update/EmuForwarder.pkg) and install it with **GoldHEN → Package Installer**.
+3. Start **EmuForwarder** (blue icon). It also puts **EFUpdater** (orange icon) on your home screen.
 
-1. Kies de game en druk op **X**. Staat hij op USB, kies dan eerst kopiëren of verplaatsen.
-2. Kies **Tegel maken en installeren**. EmuForwarder installeert de tegel zelf, geeft hem de naam van de game en zet je gekozen icoon (of de hoes) erop.
-3. Zie je nog de oude naam of het oude icoon, herstart dan de PS4.
+## Updating
 
-Lukt zelf installeren niet, dan zet de app het pakket in `/data/pkg` en kun je het via **GoldHEN → Package Installer** installeren. Wat er gebeurde staat in `/data/PS4Tegelmaker/emuforwarder.log`.
+EmuForwarder checks GitHub at start. When there is a new version, choose **Download**: the package goes to `/data/pkg`. Close EmuForwarder and open **EFUpdater**, which removes the old version and installs the new one in one go. Your settings, icons, names and music stay. (Settings: **Square**.)
 
-## Het icoon kiezen (Options)
+## Using it
 
-De app haalt via internet afbeeldingen op:
-- GameCube: van GameTDB (hoes, volledige hoes, 3D-hoes en disc).
-- Retro-games: van libretro (boxart, titelscherm en screenshot).
-- De hoes die de emulator al had, en je eerder gekozen icoon.
-
-| Knop | Wat het doet |
+| Button | Library |
 | --- | --- |
-| L1 / R1 | Vorige / volgende afbeelding |
-| Pijltjes | Afbeelding verplaatsen |
-| L2 / R2 | Uitzoomen / inzoomen |
-| Vierkant | De hele afbeelding in het vierkant |
-| Driehoek | Terug naar beginstand |
-| X | Opslaan als icoon |
-| O | Terug zonder opslaan |
+| D-pad | Browse your games |
+| L1 / R1 | Systems (All, GameCube, NDS, GBA, ...) |
+| X | Game menu: make or update the tile, choose an icon, copy from USB |
+| Options | Choose the icon |
+| Square | Settings (SteamGridDB key, sources, music, updates) |
+| Triangle | Search again |
+| Circle (2x) | Close |
 
-Links zie je de hele afbeelding, met een gele rand om het deel dat het icoon wordt. Rechts zie je het icoon zoals het op je PS4 komt. Het gekozen icoon wordt per game bewaard in `/data/PS4Tegelmaker/icons/` en gaat mee als de game later een andere tegel krijgt. Zie je het oude icoon nog, herstart dan de PS4.
+Making a tile: **X → Make tile**. EmuForwarder shows the name the tile gets; keep it or change it, then it installs the tile with your icon. The home screen shows a new name or icon after a PS4 restart.
 
-## Goed om te weten
+Icon editor: **L1/R1** or the D-pad to browse, **Square** for list or grid, **X** to pick a picture, then move with the D-pad, zoom with **L2/R2**, **X** to save. **Circle** goes back.
 
-- Een algemene tegel ("GameCube 1-4", "Retro 1-4") krijgt de naam en het icoon van de game die erop staat.
-- Zijn alle vier algemene tegels van een soort bezet, dan neemt de nieuwe game de tegel over die het langst geleden is toegewezen.
-- De tegelpakketten staan op de PS4 in `/data/PS4Tegelmaker/tiles/` (niet in git: ze bevatten de emulators). Elke tegel bevat zijn emulator, ongeveer 200 MB per stuk.
+Music: put `.ogg` or 16-bit `.wav` files in `/data/PS4Tegelmaker/muziek/`.
+
+## Roadmap
+
+- **More emulators**, such as **RetroArch** and **Crema**.
+- **PS5**: once the jailbreak for PS5 firmware 14.20 is out, work starts on a PS5 version.
+- **Smaller forwards**: a forward is about 200 MB now, because the emulator is still inside it. The goal is to make them smaller and smaller.
+
+It already works great, and it will keep getting better.
+
+## For developers
+
+- `native/`: the PS4 app (`main.cpp`) and EFUpdater (`updater.cpp`), OpenOrbis toolchain. `native/build.sh` builds both.
+- `offline-slot/`: the forwarder that goes into each tile.
+- `native/icons/`: `make_icons.py` (app icons) and `make_intro.py` (the intro's parts).
+- Releasing: `./publiceer.sh 1.0.1 "what's new"` builds, tags `v1.0.1` and puts the package on GitHub; every PS4 with EmuForwarder sees it at its next start.
+
+Made by Studio van Batenburg.

@@ -13,10 +13,15 @@ export LD_LIBRARY_PATH="$llvm/lib64:$tools/openssl/usr/lib/x86_64-linux-gnu"
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 bin="$oo/bin/linux"
 common="$oo/samples/_common"
-# One number for everything: build 13 = v0.13 = APP_VER 01.73.
+# The release (native/RELEASE, e.g. 1.0.0) is what people see; the build number (native/VERSION) goes
+# up with every publish and is what the update check compares.
+# APP_VER (what the PS4 and EFUpdater compare): 1.0.0 -> 10.00, 1.2.3 -> 12.03 (before 1.0.0: 01.xx).
 build=$(tr -dc 0-9 < "$native/VERSION")
-label="v0.$build"
-app_ver=$(printf "01.%02d" $((60 + build)))
+release=$(tr -dc 0-9. < "$native/RELEASE")
+IFS=. read -r major minor patch <<< "$release"
+if (( minor > 9 || patch > 99 )); then echo "RELEASE $release past niet in APP_VER" >&2; exit 1; fi
+label="v$release"
+app_ver=$(printf "%02d.%02d" $((major * 10 + minor)) "$patch")
 # The Updater only changes now and then; EmuForwarder reinstalls it when this goes up.
 updater_ver=$(tr -dc 0-9. < "$native/UPDATER_VERSION")
 objects="$work/objects"
