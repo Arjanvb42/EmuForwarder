@@ -2,7 +2,7 @@
 
 **Your emulator games as real tiles on the PS4 home screen.** EmuForwarder runs on the PS4 itself (GoldHEN). Pick a game, pick its artwork, and EmuForwarder installs a tile that starts that game straight in its emulator. No menus in between, no PC needed.
 
-<!-- The promo video goes here: docs/EmuForwarder-promo.mp4 -->
+**▶ [Watch the promo video](docs/promo/EmuForwarder-promo.mp4)** (1:34)
 
 ## What it does
 
