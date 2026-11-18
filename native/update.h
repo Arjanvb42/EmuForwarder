@@ -1,15 +1,15 @@
 #pragma once
-// Updates from GitHub: EmuForwarder looks for a newer version at start and downloads its update
-// package to /data/pkg, ready for GoldHEN's Package Installer. One push to GitHub reaches every PS4
-// that has the app; no FTP needed.
+// Updates from GitHub: EmuForwarder looks for a newer version at start and downloads the package
+// to /data/pkg. One push to GitHub reaches every PS4 that has the app; no FTP needed.
 //
-// The update package is a patch (category gp, like a game update), so the PS4 installs it over the
-// installed app instead of saying "already installed". VERSION (the master version) stays 01.00.
+// Installing: the PS4 only installs a full package after the old one is removed, and an app can't
+// remove itself while it runs. EmuForwarder Updater (TGMA00002, updater.cpp, installed by
+// EmuForwarder itself) removes the old EmuForwarder and installs the new one in one go.
+// (A patch package would install over it, but the toolchain builds patches the PS4 refuses.)
 //
 // On GitHub (public, so the PS4 needs no login):
-//   update/latest.txt                build=24 / version=v0.24 / size / fnv (of the update) / notes
-//   update/EmuForwarder-update.pkg   the update (patch)
-//   update/EmuForwarder.pkg          the full app, for a first install
+//   update/latest.txt          build / version / size / fnv (of the package) / notes
+//   update/EmuForwarder.pkg    the package
 
 #include <dirent.h>
 #include <pthread.h>
@@ -134,14 +134,14 @@ static void remove_old_files()
 
 static std::string package_path(const std::string &version)
 {
-    return std::string(PackageFolder) + "/EmuForwarder-" + version + "-update.pkg";
+    return std::string(PackageFolder) + "/EmuForwarder-" + version + ".pkg";
 }
 
 // Download the newer package to /data/pkg (older EmuForwarder packages there are removed).
 static bool download(std::string &error)
 {
     std::vector<uint8_t> package;
-    const int status = online::get(std::string(Base) + "EmuForwarder-update.pkg", {}, package, 64 * 1024 * 1024);
+    const int status = online::get(std::string(Base) + "EmuForwarder.pkg", {}, package, 64 * 1024 * 1024);
     if (status != 200) {
         error = status < 0 ? "downloaden mislukt" : "GitHub antwoordde " + std::to_string(status);
         return false;

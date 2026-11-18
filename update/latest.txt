@@ -1,5 +1,5 @@
-build=25
-version=v0.25
-size=5111808
-fnv=2f9b5b17be617dac
-notes=Test: update over de app heen
+build=26
+version=v0.26
+size=11796480
+fnv=6c7e64f60b0a3197
+notes=EmuForwarder Updater installeert updates over de oude versie

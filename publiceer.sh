@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bouwt EmuForwarder en zet het pakket op GitHub. Elke PS4 met EmuForwarder ziet de update bij het
-# starten en downloadt het pakket naar /data/pkg (installeren via GoldHEN > Package Installer).
+# starten en downloadt het pakket naar /data/pkg; "EmuForwarder Updater" installeert het.
 #   ./publiceer.sh "wat er nieuw is"
 # Het versienummer staat in native/VERSION en gaat er elke keer 1 omhoog.
 set -euo pipefail
@@ -11,15 +11,14 @@ echo "$build" > native/VERSION
 bash native/build.sh
 git rm -q --cached --ignore-unmatch update/emuforwarder.self update/emuforwarder.prx
 rm -f update/emuforwarder.self update/emuforwarder.prx
-cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg update/EmuForwarder.pkg          # eerste installatie
-cp native/out/update/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg update/EmuForwarder-update.pkg   # update (patch)
-cp update/EmuForwarder-update.pkg "EmuForwarder-v0.$build-update.pkg"
+git rm -q --cached --ignore-unmatch update/EmuForwarder-update.pkg; rm -f update/EmuForwarder-update.pkg
+cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg update/EmuForwarder.pkg
 cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg "EmuForwarder-v0.$build.pkg"
 cp native/out/app.elf "EmuForwarder-v0.$build.elf"   # om crash.log-adressen te lezen
 python3 - "$build" "$notes" <<'PY'
 import sys
 build, notes = sys.argv[1], sys.argv[2]
-data = open("update/EmuForwarder-update.pkg", "rb").read()
+data = open("update/EmuForwarder.pkg", "rb").read()
 h = 1469598103934665603
 for b in data:
     h = ((h ^ b) * 1099511628211) & 0xFFFFFFFFFFFFFFFF

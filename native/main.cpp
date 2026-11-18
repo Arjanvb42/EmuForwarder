@@ -101,6 +101,7 @@ static void reset_icon(const Game &game);
 static void draw();
 static std::string tile_title(const Game &game);
 static bool save_title(const Game &game, const std::string &name);
+static bool copy_small(const char *source, const char *destination);
 
 static const char *basename_of(const char *path)
 {
@@ -511,7 +512,7 @@ static void install_update()
         return;
     }
     snprintf(status, sizeof(status),
-             "Update %s staat in /data/pkg. Sluit EmuForwarder en installeer hem via GoldHEN > Package Installer.",
+             "%s staat klaar. Sluit EmuForwarder en open \"EmuForwarder Updater\" op je home screen.",
              update::latest.version.c_str());
 }
 
@@ -522,6 +523,31 @@ static void open_name_question()
     menu.open = menu.confirm_name = true;
     menu.items = {"Ja, tegel maken", "Naam wijzigen", "Annuleren"};
     menu.actions = {ConfirmTileAction, RenameAction, CancelAction};
+}
+
+// EmuForwarder Updater (TGMA00002) comes inside this package; install it when it is missing or older.
+static void ensure_updater()
+{
+    const std::string have = sys::installed_version("TGMA00002");
+    if (!have.empty() && have >= EF_UPDATER_VERSION)
+        return;
+    sys::log("updater: geinstalleerd \"%s\", meegeleverd %s: installeren", have.c_str(), EF_UPDATER_VERSION);
+    static constexpr char Copy[] = "/data/PS4Tegelmaker/updater.pkg";
+    if (!copy_small("/app0/updater.pkg", Copy)) {
+        sys::log("updater: kopieren mislukt");
+        return;
+    }
+    std::string error;
+    snprintf(status, sizeof(status), "EmuForwarder Updater installeren...");
+    draw();
+    const sys::Install result = sys::install(Copy, "TGMA00002", "EmuForwarder Updater", error, [](int percent) {
+        snprintf(status, sizeof(status), "EmuForwarder Updater installeren... %d%%", percent);
+        draw();
+    });
+    unlink(Copy);
+    snprintf(status, sizeof(status), result == sys::Install::Failed ? "EmuForwarder Updater installeren lukte niet (%s)."
+                                                                    : "EmuForwarder Updater staat op je home screen.",
+             error.c_str());
 }
 
 static void open_update_question()
@@ -1984,6 +2010,7 @@ static int ef_app_main()
     // the app keeps running underneath while the screen stays on the boot image.
     sceSystemServiceHideSplashScreen();
     update::remove_old_files();
+    ensure_updater();
     mkdir(music::Folder, 0777);
     music::enabled = online::settings.music;
     music::volume = online::settings.music_volume;
