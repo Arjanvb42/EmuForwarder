@@ -1,5 +1,5 @@
-build=14
-version=v0.14
+build=15
+version=v0.15
 size=2716896
-fnv=186f197d0182b72e
-notes=Test: bijwerken via GitHub werkt
+fnv=b9b479eab8537c38
+notes=Naam van de tegel bevestigen of wijzigen

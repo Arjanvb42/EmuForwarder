@@ -99,6 +99,7 @@ static void open_editor(int index);
 static void reset_icon(const Game &game);
 static void draw();
 static std::string tile_title(const Game &game);
+static bool save_title(const Game &game, const std::string &name);
 
 static const char *basename_of(const char *path)
 {
@@ -314,13 +315,14 @@ static struct Menu {
     bool confirm_move = false;
     bool settings = false;
     bool update = false;  // "a newer version is there" question
+    bool confirm_name = false;  // "the tile gets this name" question
     std::vector<std::string> items;
     std::vector<int> actions;
     int selected = 0;
 } menu;
 enum Action { TileAction, IconAction, ResetIconAction, CopyAction, MoveAction, ConfirmMoveAction, CancelAction,
               KeyAction, ToggleSteamGridAction, ClearKeyAction, OnlySteamGridAction, AutoUpdateAction,
-              CheckUpdateAction, InstallUpdateAction };
+              CheckUpdateAction, InstallUpdateAction, ConfirmTileAction, RenameAction };
 static time_t exit_armed = 0;
 static char last_status[256];
 static time_t status_time;
@@ -423,10 +425,7 @@ static void refresh_tiles()
         game.tile_installed = false;
         if (!game.internal || !tile_for(game, id))
             continue;
-        if (game.tile)
-            snprintf(game.tile_label, sizeof(game.tile_label), "%s", game.tile->title);
-        else
-            snprintf(game.tile_label, sizeof(game.tile_label), "%s", tile_title(game).c_str());
+        snprintf(game.tile_label, sizeof(game.tile_label), "%s", tile_title(game).c_str());
         char app[48];
         snprintf(app, sizeof(app), "/user/app/%s", id);
         game.tile_installed = directory_exists(app);
@@ -511,6 +510,15 @@ static void install_update()
     snprintf(status, sizeof(status), "%s staat klaar. Sluit EmuForwarder en start hem opnieuw.", update::latest.version.c_str());
 }
 
+// Before a tile is made: show the name it gets, with the chance to change it.
+static void open_name_question()
+{
+    menu = Menu{};
+    menu.open = menu.confirm_name = true;
+    menu.items = {"Ja, tegel maken", "Naam wijzigen", "Annuleren"};
+    menu.actions = {ConfirmTileAction, RenameAction, CancelAction};
+}
+
 static void open_update_question()
 {
     menu = Menu{};
@@ -581,7 +589,22 @@ static void run_menu_action()
     sys::log("menu: \"%s\" voor %s", menu.items[menu.selected].c_str(), games[index].path);
     menu.open = false;
     switch (action) {
-    case TileAction: prepare_tile(games[index]); break;
+    case TileAction: open_name_question(); break;
+    case ConfirmTileAction: prepare_tile(games[index]); break;
+    case RenameAction: {
+        std::string name = tile_title(games[index]);
+        if (online::keyboard("Naam van de tegel", name, [] { draw(); usleep(16 * 1000); })) {
+            while (!name.empty() && name.back() == ' ')
+                name.pop_back();
+            while (!name.empty() && name.front() == ' ')
+                name.erase(0, 1);
+            if (!save_title(games[index], name))
+                snprintf(status, sizeof(status), "Kan de naam niet opslaan.");
+            refresh_tiles();
+        }
+        open_name_question();
+        break;
+    }
     case IconAction: open_editor(index); break;
     case ResetIconAction: reset_icon(games[index]); break;
     case CopyAction: transfer_game(games[index], false); break;
@@ -698,7 +721,8 @@ static void draw()
         v.status_is_news = time(nullptr) - status_time < 5;
         if (menu.open) {
             v.menu_open = true;
-            v.menu_title = menu.update ? "Nieuwe versie: " + update::latest.version +
+            v.menu_title = menu.confirm_name && !view.empty() ? "De tegel krijgt de naam:  \"" + tile_title(games[selected]) + "\""
+                         : menu.update ? "Nieuwe versie: " + update::latest.version +
                                              (update::latest.notes.empty() ? "" : "  -  " + update::latest.notes)
                          : menu.settings ? "Instellingen"
                          : menu.confirm_move ? "Verplaatsen? De USB-kopie wordt gewist na controle."
@@ -1281,14 +1305,49 @@ static bool copy_small(const char *source, const char *destination)
     return true;
 }
 
-// A tile's name for a ROM file: "Mario Kart DS (USA) (En,Fr)" -> "Mario Kart DS".
-static std::string tile_title(const Game &game)
+// A name chosen for a game's tile is kept here, keyed by the game's path like the icon.
+static constexpr char NameFolder[] = "/data/PS4Tegelmaker/names";
+static void custom_name_path(const Game &game, char (&path)[96])
 {
+    char icon[96];
+    custom_icon_path(game, icon);
+    const char *file = strrchr(icon, '/') + 1;
+    snprintf(path, sizeof(path), "%s/%.16s.txt", NameFolder, file);
+}
+
+// The name a tile gets without a chosen one: the catalog's, or the ROM's without its tags
+// ("Mario Kart DS (USA) (En,Fr)" -> "Mario Kart DS").
+static std::string default_title(const Game &game)
+{
+    if (game.tile)
+        return game.tile->title;
     std::string name = game.name;
     const size_t cut = std::min(name.find(" ("), name.find(" ["));
     if (cut != std::string::npos && cut > 0)
         name.erase(cut);
     return name.substr(0, 120);
+}
+
+static std::string tile_title(const Game &game)
+{
+    char path[96], line[256];
+    custom_name_path(game, path);
+    if (read_line(path, line, sizeof(line)) && line[0])
+        return std::string(line).substr(0, 120);
+    return default_title(game);
+}
+
+// Store a chosen name; an empty one (or the default) goes back to the default.
+static bool save_title(const Game &game, const std::string &name)
+{
+    char path[96];
+    custom_name_path(game, path);
+    if (name.empty() || name == default_title(game)) {
+        unlink(path);
+        return true;
+    }
+    mkdir(NameFolder, 0777);
+    return write_line(path, name.substr(0, 120).c_str());
 }
 
 // Write a tile's icon; logs when the PS4 refuses.
@@ -1554,11 +1613,10 @@ static void sync_icons()
         custom_icon_path(game, custom);
         if (!tile_for(game, id))
             continue;
-        // General tiles (GameCube N / Retro N) carry the game's name; the system may have put the
-        // package's name back.
+        // Tiles carry the game's (chosen) name; the system may have put the package's name back.
         char app_dir[48];
         snprintf(app_dir, sizeof(app_dir), "/user/app/%s", id);
-        if ((!strncmp(id, "TGEM", 4) || !strncmp(id, "TGCU", 4)) && directory_exists(app_dir)) {
+        if (directory_exists(app_dir)) {
             const std::string title = tile_title(game), now = sys::db_title(id);
             if (!now.empty() && now != title)
                 sys::set_title(id, title.c_str());
@@ -1823,7 +1881,8 @@ static void prepare_tile(const Game &game)
     snprintf(source, sizeof(source), "%s/%s.pkg", Templates, disc);
     snprintf(id, sizeof(id), "TGCG%05d", static_cast<int>(game.tile - Catalog) + 1);
     custom_icon_path(game, custom);
-    place_tile(id, source, game.tile->title, false, custom, nullptr);
+    const std::string title = tile_title(game);
+    place_tile(id, source, title.c_str(), title != game.tile->title, custom, nullptr);
 }
 
 // Back to the cover the emulator has (also on the tile, when it is installed).
