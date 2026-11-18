@@ -22,6 +22,6 @@ open("update/latest.txt", "w").write(
     f"build={build}\nversion=v0.{build}\nsize={len(data)}\nfnv={h:016x}\nnotes={notes.replace(chr(10), ' ')}\n")
 PY
 git add -A
-git commit -m "EmuForwarder v0.$build${notes:+: $notes}"
+git commit -m "EmuForwarder v0.$build${notes:+: $notes}" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 git push origin main
 echo "v0.$build staat op GitHub. Pakket voor een nieuwe installatie: EmuForwarder-v0.$build.pkg"
