@@ -1,5 +1,5 @@
-build=28
-version=v0.28
+build=29
+version=v0.29
 size=11796480
-fnv=55d0368e6a1cd6d5
-notes=Nieuwe iconen; de Updater heet nu EFUpdater (oranje)
+fnv=15995e89dfd1fd2d
+notes=Nieuwe iconen in de stijl van Studio van Batenburg
