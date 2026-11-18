@@ -1,5 +1,5 @@
-build=19
-version=v0.19
+build=20
+version=v0.20
 size=2817376
-fnv=513cfbdd0d8bca94
-notes=EmuForwarder laadt updates nu zelf in
+fnv=8916e653fb16a428
+notes=Test: update via module
