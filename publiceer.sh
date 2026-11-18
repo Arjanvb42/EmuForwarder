@@ -8,13 +8,15 @@ notes=${1:-}
 build=$(( $(tr -dc 0-9 < native/VERSION) + 1 ))
 echo "$build" > native/VERSION
 bash native/build.sh
-cp native/out/emuforwarder.self update/emuforwarder.self
+cp native/out/emuforwarder.prx update/emuforwarder.prx
+git rm -q --cached --ignore-unmatch update/emuforwarder.self; rm -f update/emuforwarder.self
+cp native/out/module.elf "EmuForwarder-v0.$build.module.elf"   # om crash.log-adressen te lezen
 cp native/out/IV0000-TGMA00001_00-TEGELMAKERPS4000.pkg "EmuForwarder-v0.$build.pkg"
 cp native/out/app.elf "EmuForwarder-v0.$build.elf"   # om crash.log-adressen te lezen
 python3 - "$build" "$notes" <<'PY'
 import sys
 build, notes = sys.argv[1], sys.argv[2]
-data = open("update/emuforwarder.self", "rb").read()
+data = open("update/emuforwarder.prx", "rb").read()
 h = 1469598103934665603
 for b in data:
     h = ((h ^ b) * 1099511628211) & 0xFFFFFFFFFFFFFFFF

@@ -1,5 +1,5 @@
-build=18
-version=v0.18
-size=2716960
-fnv=3f5570fb13b65c08
-notes=Test van de starter (2)
+build=19
+version=v0.19
+size=2817376
+fnv=513cfbdd0d8bca94
+notes=EmuForwarder laadt updates nu zelf in

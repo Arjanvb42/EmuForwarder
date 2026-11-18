@@ -1,15 +1,18 @@
-// EmuForwarder's starter (eboot.bin). Starts the newest EmuForwarder: a downloaded update when it is
-// newer than the one in this package, else the package's own (/app0/emuforwarder.self).
+// EmuForwarder's starter (eboot.bin). EmuForwarder itself is a module (emuforwarder.prx) that the
+// starter loads into its own process and runs (ef_main): a downloaded update when it is newer than
+// the one in this package, else the package's own.
 //
-// Starting a program outside /app0 does not return when it fails (seen 2026-11-18 with a /data path:
-// the app just closed). So each way is tried once: the starter leaves a "starting" mark, the app
-// removes it after its first screen and writes down the way that worked (route.txt). A mark that is
-// still there at the next start means that way failed; the next way is tried, and after the last one
-// the package's own version is used. Every step goes to /data/PS4Tegelmaker/update/starter.log.
+// Starting another program (sceSystemServiceLoadExec) only works from /app0: with a downloaded
+// program the app just closed (2026-11-18, three paths tried). Loading a module returns an error
+// instead, so the starter can fall back. When a downloaded module did not get as far as its first
+// screen last time ("starting" mark still there), it is put aside.
+// Every step goes to /data/PS4Tegelmaker/update/starter.log.
 #include <orbis/SystemService.h>
 #include <orbis/libkernel.h>
 
+#include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -17,15 +20,8 @@
 #include <unistd.h>
 
 #define FOLDER "/data/PS4Tegelmaker/update"
-#define BUILT_IN "/app0/emuforwarder.self"
-
-// The ways to reach the downloaded program, as the system (outside the app's sandbox) sees them.
-// EmuForwarder copies the download to both places.
-static const char *const Routes[] = {
-    "/user/app/TGMA00001/update/emuforwarder.self",
-    "/user/data/PS4Tegelmaker/update/emuforwarder.self",
-};
-#define ROUTES 2
+#define UPDATE FOLDER "/emuforwarder.prx"
+#define BUILT_IN "/app0/emuforwarder.prx"
 
 static void note(const char *message, long value)
 {
@@ -48,74 +44,109 @@ static bool present(const char *path)
     return true;
 }
 
-static int read_number(const char *path, int fallback)
+// GoldHEN SDK: syscall 500, 2 = leave the sandbox, 3 = come back with the same backup.
+long ef_loader_syscall(long num, ...);
+__asm__(
+    ".text\n"
+    ".globl ef_loader_syscall\n"
+    "ef_loader_syscall:\n"
+    "  movq $0, %rax\n"
+    "  movq %rcx, %r10\n"
+    "  syscall\n"
+    "  jb 1f\n"
+    "  retq\n"
+    "1:\n"
+    "  movq $-1, %rax\n"
+    "  retq\n");
+
+struct JailbreakBackup {
+    uint32_t cr_uid, cr_ruid, cr_rgid, cr_groups;
+    uint64_t cr_paid;
+    uint64_t cr_caps[2];
+    void *cr_prison, *fd_cdir, *fd_jdir, *fd_rdir;
+};
+
+static long goldhen(long command, struct JailbreakBackup *backup)
 {
-    FILE *file = fopen(path, "r");
+    unsigned char info[256];  // only the result matters (this libc's struct stat layout is off)
+    if (stat("/data/GoldHEN", (struct stat *)info) != 0)
+        return -1;  // no GoldHEN: its syscall would kill the process
+    void (*old12)(int) = signal(12, SIG_IGN);
+    void (*old31)(int) = signal(31, SIG_IGN);
+    const long rc = ef_loader_syscall(500, command, backup);
+    signal(31, old31);
+    signal(12, old12);
+    return rc;
+}
+
+typedef int (*EntryPoint)(void);
+
+// Load a module and find ef_main in it; NULL when that does not work.
+static EntryPoint load(const char *path)
+{
+    const int handle = sceKernelLoadStartModule(path, 0, NULL, 0, NULL, NULL);
+    note(path, handle);
+    if (handle < 0)
+        return NULL;
+    void *entry = NULL;
+    const int rc = sceKernelDlsym(handle, "ef_main", &entry);
+    note("  ef_main", rc == 0 ? 0 : rc);
+    return rc == 0 ? (EntryPoint)entry : NULL;
+}
+
+static EntryPoint load_update(void)
+{
+    EntryPoint entry = load(UPDATE);
+    if (entry)
+        return entry;
+    // Maybe the module loader only reaches it from outside the sandbox.
+    struct JailbreakBackup backup = {0};
+    const long rc = goldhen(2, &backup);
+    note("  zandbak verlaten", rc);
+    entry = load("/user/data/PS4Tegelmaker/update/emuforwarder.prx");
+    if (!entry)
+        entry = load(UPDATE);
+    if (rc == 0)
+        goldhen(3, &backup);
+    return entry;
+}
+
+static int read_build(void)
+{
+    FILE *file = fopen(FOLDER "/build.txt", "r");
     if (!file)
-        return fallback;
+        return 0;
     char line[32] = "";
     const bool ok = fgets(line, sizeof(line), file) != NULL;
     fclose(file);
-    return ok ? atoi(line) : fallback;
-}
-
-static void write_numbers(const char *path, int a, int b)
-{
-    FILE *file = fopen(path, "w");
-    if (file) {
-        fprintf(file, "%d %d\n", a, b);
-        fclose(file);
-    }
+    return ok ? atoi(line) : 0;
 }
 
 int main(void)
 {
-    const int build = read_number(FOLDER "/build.txt", 0);
+    const int build = read_build();
     note("starter: gedownloade build / ingebouwde build", (long)build * 1000 + EF_BUILD);
-    if (build > EF_BUILD && present(FOLDER "/emuforwarder.self")) {
-        // failed.txt: "<build> <bitmask of ways that failed for that build>"
-        int failed_build = 0, failed = 0;
-        FILE *file = fopen(FOLDER "/failed.txt", "r");
-        if (file) {
-            if (fscanf(file, "%d %d", &failed_build, &failed) != 2)
-                failed_build = failed = 0;
-            fclose(file);
-        }
-        if (failed_build != build)
-            failed = 0;
+    if (build > EF_BUILD && present(UPDATE)) {
         if (present(FOLDER "/starting")) {
-            const int tried = read_number(FOLDER "/attempt.txt", -1);
-            if (tried >= 0 && tried < ROUTES)
-                failed |= 1 << tried;
+            rename(UPDATE, UPDATE ".kapot");
             unlink(FOLDER "/starting");
-            note("vorige poging startte niet; manier", tried);
-            write_numbers(FOLDER "/failed.txt", build, failed);
-        }
-        int route = read_number(FOLDER "/route.txt", -1);  // a way that worked before
-        if (route < 0 || route >= ROUTES || (failed & (1 << route))) {
-            route = -1;
-            for (int i = 0; i < ROUTES; ++i)
-                if (!(failed & (1 << i))) {
-                    route = i;
-                    break;
-                }
-        }
-        if (route >= 0) {
-            write_numbers(FOLDER "/attempt.txt", route, 0);
-            FILE *mark = fopen(FOLDER "/starting", "w");
+            note("update kwam vorige keer niet tot het eerste scherm: ingebouwde versie", build);
+        } else {
+            FILE *mark = fopen(FOLDER "/starting", "w");  // EmuForwarder removes it after its first screen
             if (mark)
                 fclose(mark);
-            note(Routes[route], route);
-            const int32_t rc = sceSystemServiceLoadExec(Routes[route], NULL);
-            note("  starten mislukt", (unsigned)rc);
+            EntryPoint entry = load_update();
+            if (entry)
+                return entry();
             unlink(FOLDER "/starting");
-            write_numbers(FOLDER "/failed.txt", build, failed | (1 << route));
-        } else {
-            note("geen manier werkte: ingebouwde versie", failed);
+            note("update laden lukte niet: ingebouwde versie", build);
         }
     }
-    note("ingebouwde versie starten", 0);
-    const int32_t rc = sceSystemServiceLoadExec(BUILT_IN, NULL);
+    EntryPoint entry = load(BUILT_IN);
+    if (entry)
+        return entry();
+    // Last resort: the package's program on its own.
+    const int32_t rc = sceSystemServiceLoadExec("/app0/emuforwarder.self", NULL);
     note("ingebouwde versie starten mislukt", (unsigned)rc);
     return 1;
 }

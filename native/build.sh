@@ -39,6 +39,17 @@ sqlite="$tools/../sqlite/sqlite-amalgamation-3470200/sqlite3.c"
     -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog \
     -o "$stage/.build/app.elf"
 mkdir -p "$out" && cp "$stage/.build/app.elf" "$out/app.elf"
+# The same program as a module (emuforwarder.prx): the starter loads it, and updates replace it.
+"$llvm/bin/ld.lld" -m elf_x86_64 -pie --script "$oo/link.x" --eh-frame-hdr -L"$oo/lib" \
+    "$stage/.build/"main.o "$stage/.build/"crash.o "$stage/.build/"graphics.o "$stage/.build/"sqlite3.o \
+    -lc -lkernel -lc++ -lc++abi \
+    -lSceVideoOut -lSceFreeType -lSceSysmodule -lScePad -lSceUserService -lSceSystemService -lSceNet -lSceNetCtl \
+    -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog \
+    "$oo/lib/crtlib.o" -o "$stage/.build/module.elf"
+cp "$stage/.build/module.elf" "$out/module.elf"
+"$bin/create-fself" -in "$stage/.build/module.elf" -out "$stage/.build/module.oelf" \
+    --lib "$stage/emuforwarder.prx" --paid 0x3800000000000011
+cp "$stage/emuforwarder.prx" "$out/emuforwarder.prx"
 "$bin/create-fself" -in "$stage/.build/app.elf" -out "$stage/.build/app.oelf" \
     --eboot "$stage/emuforwarder.self" --paid 0x3800000000000011
 cp "$stage/emuforwarder.self" "$out/emuforwarder.self"

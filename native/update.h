@@ -1,14 +1,14 @@
 #pragma once
 // Updates from GitHub, without FTP or Package Installer.
 //
-// The package's eboot.bin is a small starter (loader.c): it starts the newest EmuForwarder, which is
-// either the one inside the package (/app0/emuforwarder.self) or a downloaded one in
+// The package's eboot.bin is a small starter (loader.c): it loads the newest EmuForwarder module, which
+// is either the one inside the package (/app0/emuforwarder.prx) or a downloaded one in
 // /data/PS4Tegelmaker/update/. Updating only means downloading that one file, so the app never has
 // to reinstall itself while it runs.
 //
 // On GitHub (public, so the PS4 needs no login):
 //   update/latest.txt         build=13 / version=v0.13 / size=<bytes> / fnv=<16 hex> / notes=<text>
-//   update/emuforwarder.self  the program itself
+//   update/emuforwarder.prx   the program itself (a module the starter loads)
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -29,7 +29,7 @@ namespace update {
 
 static constexpr char Base[] = "https://raw.githubusercontent.com/Arjanvb42/EmuForwarder/main/update/";
 static constexpr char Folder[] = "/data/PS4Tegelmaker/update";
-static constexpr char SelfFile[] = "/data/PS4Tegelmaker/update/emuforwarder.self";
+static constexpr char SelfFile[] = "/data/PS4Tegelmaker/update/emuforwarder.prx";
 static constexpr char BuildFile[] = "/data/PS4Tegelmaker/update/build.txt";
 static constexpr char StartingFile[] = "/data/PS4Tegelmaker/update/starting";  // set by the starter
 
@@ -119,35 +119,22 @@ static void check()
 
 static bool newer() { return latest.build > EF_BUILD; }
 
-// Called after the first screen: when the starter started this program from a download, remember
-// the way that worked.
+// Called after the first screen: this version starts fine, the starter may keep loading it.
 static void started()
 {
     FILE *mark = fopen(StartingFile, "r");
     if (!mark)
         return;
     fclose(mark);
-    FILE *attempt = fopen("/data/PS4Tegelmaker/update/attempt.txt", "r");
-    int route = -1;
-    if (attempt) {
-        if (fscanf(attempt, "%d", &route) != 1)
-            route = -1;
-        fclose(attempt);
-    }
-    FILE *good = fopen("/data/PS4Tegelmaker/update/route.txt", "w");
-    if (good) {
-        fprintf(good, "%d\n", route);
-        fclose(good);
-    }
     unlink(StartingFile);
-    sys::log("gestart als update (manier %d)", route);
+    sys::log("gestart als gedownloade update");
 }
 
 // Download and store the newer version. The starter runs it from the next start on.
 static bool install(std::string &error)
 {
     std::vector<uint8_t> self;
-    const int status = online::get(std::string(Base) + "emuforwarder.self", {}, self, 32 * 1024 * 1024);
+    const int status = online::get(std::string(Base) + "emuforwarder.prx", {}, self, 32 * 1024 * 1024);
     if (status != 200) {
         error = status < 0 ? "downloaden mislukt" : "GitHub antwoordde " + std::to_string(status);
         return false;
@@ -171,18 +158,6 @@ static bool install(std::string &error)
     ok = fclose(file) == 0 && ok;
     ok = ok && rename(pending, SelfFile) == 0;
     if (ok) {
-        // The system may only start it from the app's own folder: put a copy there too.
-        {
-            sys::Elevated elevated;
-            mkdir("/user/app/TGMA00001/update", 0777);
-            FILE *copy = fopen("/user/app/TGMA00001/update/emuforwarder.self.tmp", "wb");
-            bool copied = copy && fwrite(self.data(), 1, self.size(), copy) == self.size();
-            copied = copy && fclose(copy) == 0 && copied;
-            copied = copied && rename("/user/app/TGMA00001/update/emuforwarder.self.tmp",
-                                      "/user/app/TGMA00001/update/emuforwarder.self") == 0;
-            chmod("/user/app/TGMA00001/update/emuforwarder.self", 0777);
-            sys::log("update: kopie in /user/app/TGMA00001/update: %s", copied ? "gezet" : "mislukt");
-        }
         unlink(StartingFile);
         unlink("/data/PS4Tegelmaker/update/failed.txt");
         FILE *build = fopen(BuildFile, "w");

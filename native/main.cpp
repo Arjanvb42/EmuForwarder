@@ -1917,7 +1917,7 @@ static void reset_icon(const Game &game)
                                           : "Eigen icoon verwijderd.");
 }
 
-int main()
+static int ef_app_main()
 {
     mkdir(AppData, 0777);
     ef_install_crash_handler();
@@ -2083,3 +2083,8 @@ int main()
         present();
     }
 }
+
+// EmuForwarder runs as a module that the starter (loader.c) loads and calls, so a downloaded update
+// can run without reinstalling the package. main() is there for the plain program as a last resort.
+extern "C" __attribute__((visibility("default"))) int ef_main(void) { return ef_app_main(); }
+int main() { return ef_app_main(); }
