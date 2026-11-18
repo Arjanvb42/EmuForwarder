@@ -108,6 +108,14 @@ make_package "$updater_stage" IV0000-TGMA00002_00-EMUFWDUPDATER000 TGMA00002 "EF
 stage="$work/app"
 new_stage "$stage" emuforwarder
 cp "$work/updater-out/IV0000-TGMA00002_00-EMUFWDUPDATER000.pkg" "$stage/updater.pkg"
+# The program of the tiles EmuForwarder builds (it opens the installed emulator), and their fallback icon.
+mkdir -p "$stage/tile"
+cc -Wall -Wextra -Werror -c "$native/tile/forwarder.c" -o "$objects/forwarder.o"
+"$llvm/bin/ld.lld" -m elf_x86_64 -pie --script "$oo/link.x" --eh-frame-hdr -L"$oo/lib" \
+    "$oo/lib/crt1.o" "$objects/forwarder.o" -lc -lkernel -lSceSystemService -lSceLncUtil -lSceUserService -o "$objects/forwarder.elf"
+"$bin/create-fself" -in "$objects/forwarder.elf" -out "$objects/forwarder.oelf" \
+    --eboot "$stage/tile/eboot.bin" --paid 0x3800000000000011
+cp "$native/icons/tile.png" "$stage/tile/icon0.png"
 link "$objects/app.elf" "$objects/main.o" "$objects/crash.o" "$objects/graphics.o" "$objects/sqlite3.o" "$objects/vorbis.o"
 cp "$objects/app.elf" "$out/app.elf"
 "$bin/create-fself" -in "$objects/app.elf" -out "$objects/app.oelf" \

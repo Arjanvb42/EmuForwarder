@@ -23,6 +23,8 @@
 #include "update.h"
 #include "music.h"
 #include "intro.h"
+#include "pkg/pkgbuild.h"
+#include "helper.h"
 
 extern "C" const char *ef_step;
 extern "C" void ef_install_crash_handler();
@@ -42,10 +44,9 @@ std::stringstream debugLogStream;
 static constexpr char Library[] = "/data/DolphinPS4/games";
 static constexpr char AppData[] = "/data/PS4Tegelmaker";
 static constexpr char Mappings[] = "/data/PS4Tegelmaker/mappings";
-static constexpr char Templates[] = "/data/PS4Tegelmaker/tiles";
 static constexpr char Installer[] = "/data/pkg";
 static constexpr char Covers[] = "/data/DolphinPS4/covers";
-static constexpr int Slots = 4;  // general tiles per kind: "GameCube 1..4" and "Retro 1..4"
+static constexpr int Slots = 4;  // old general tiles per kind (before 1.1): "GameCube 1..4" and "Retro 1..4"
 // Games Retrocade downloaded for other consoles (one folder per console); EmuSuNi plays them.
 static constexpr char RetroGames[] = "/data/retrocade/games";
 static constexpr char RetroCovers[] = "/data/EmuSuNi/covers";
@@ -483,8 +484,8 @@ static void open_settings(int keep_selected = 0)
         menu.actions.push_back(ClearKeyAction);
     }
     char music_label[160];
-    snprintf(music_label, sizeof(music_label), TR("Background music: %s  (%d track(s) in /data/PS4Tegelmaker/muziek)", "Achtergrondmuziek: %s  (%d nummer(s) in /data/PS4Tegelmaker/muziek)"),
-             online::settings.music ? TR("on", "aan") : TR("off", "uit"), music::track_count);
+    snprintf(music_label, sizeof(music_label), TR("Background music (%d track(s) in /data/PS4Tegelmaker/muziek): %s", "Achtergrondmuziek (%d nummer(s) in /data/PS4Tegelmaker/muziek): %s"),
+             music::track_count, online::settings.music ? TR("on", "aan") : TR("off", "uit"));
     menu.items.push_back(music_label);
     menu.actions.push_back(MusicAction);
     menu.items.push_back(TR("Music volume: ", "Volume muziek: ") + std::to_string(online::settings.music_volume) + "%");
@@ -779,6 +780,7 @@ static void draw()
                          : menu.settings ? TR("Settings", "Instellingen")
                          : menu.confirm_move ? TR("Move? The USB copy is deleted after checking.", "Verplaatsen? De USB-kopie wordt gewist na controle.")
                                              : (view.empty() ? "" : games[selected].name);
+            v.menu_settings = menu.settings;
             v.menu_items = menu.items;
             v.menu_selected = menu.selected;
         }
@@ -1259,7 +1261,7 @@ static bool directory_exists(const char *path)
 static bool stage_package(const char *source, const char *destination, const char *label)
 {
     if (!exists(source)) {
-        snprintf(status, sizeof(status), TR("The package for %s is missing in %s.", "Het pakket voor %s ontbreekt in %s."), label, Templates);
+        snprintf(status, sizeof(status), TR("The package for %s is missing: %s.", "Het pakket voor %s ontbreekt: %s."), label, source);
         return false;
     }
     if (exists(destination)) {
@@ -1507,54 +1509,237 @@ struct SlotKind {
 static const SlotKind GameCubeSlots{"slot", "TGCU", "SLOT", "GameCube", "DolphinPS4"};
 static const SlotKind RetroSlots{"retro-slot", "TGEM", "RETRO", "Retro", "EmuSuNi"};
 
-// The general tile this game uses: the one that already plays it, else a free one,
-// else the one that was assigned longest ago.
-static int choose_slot(const SlotKind &kind, const Game &game)
+// ---- Tiles built here (since 1.1) ------------------------------------------------------------
+// Every game gets its own small tile (about 6 MB): a package EmuForwarder builds on the PS4 itself with
+// the program from /app0/tile, the game's name and icon. The tile opens the installed emulator.
+// tiles.txt keeps one line per tile: "<title ID>\t<APP_VER>\t<game path>".
+static constexpr char TileList[] = "/data/PS4Tegelmaker/tiles.txt";
+static constexpr char TileBuild[] = "/data/PS4Tegelmaker/build";
+
+struct OwnTile {
+    std::string id, version, path;
+};
+static std::vector<OwnTile> own_tiles;
+static bool own_tiles_loaded = false;
+
+static std::vector<OwnTile> &load_own_tiles()
 {
-    int free_slot = 0, oldest = 0;
-    time_t oldest_time = 0;
-    for (int n = 1; n <= Slots; ++n) {
-        char path[80], current[768];
-        snprintf(path, sizeof(path), "%s/%s%02d.txt", AppData, kind.file_prefix, n);
-        if (!read_line(path, current, sizeof(current))) {
-            if (!free_slot)
-                free_slot = n;
+    if (own_tiles_loaded)
+        return own_tiles;
+    own_tiles_loaded = true;
+    own_tiles.clear();
+    FILE *file = fopen(TileList, "r");
+    if (!file)
+        return own_tiles;
+    char line[1024];
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\r\n")] = 0;
+        char *tab1 = strchr(line, '\t');
+        char *tab2 = tab1 ? strchr(tab1 + 1, '\t') : nullptr;
+        if (!tab2)
             continue;
-        }
-        if (!strcmp(current, game.path))
-            return n;
-        if (!free_slot && !exists(current))
-            free_slot = n;
-        struct stat info;
-        if (sys::stat_fixed(path, &info) == 0 && (!oldest || info.st_mtime < oldest_time)) {
-            oldest = n;
-            oldest_time = info.st_mtime;
-        }
+        *tab1 = *tab2 = 0;
+        own_tiles.push_back({line, tab1 + 1, tab2 + 1});
     }
-    return free_slot ? free_slot : (oldest ? oldest : 1);
+    fclose(file);
+    return own_tiles;
 }
 
-// Give the game a general tile and put its cover on that tile. The cover comes from the
-// covers the emulator downloads itself.
-static void prepare_general(const SlotKind &kind, const Game &game, const char *cover)
+static bool save_own_tiles()
 {
-    const int slot = choose_slot(kind, game);
-    char slot_file[80], label[32], app[48];
-    snprintf(slot_file, sizeof(slot_file), "%s/%s%02d.txt", AppData, kind.file_prefix, slot);
-    snprintf(label, sizeof(label), "%s %d", kind.label_prefix, slot);
-    snprintf(app, sizeof(app), "/user/app/%s%05d", kind.app_prefix, slot);
-    if (!write_line(slot_file, game.path)) {
-        snprintf(status, sizeof(status), TR("Couldn't assign tile %s.", "Kan de tegel %s niet toewijzen."), label);
+    std::string text;
+    for (const OwnTile &tile : own_tiles)
+        text += tile.id + "\t" + tile.version + "\t" + tile.path + "\n";
+    char pending[64];
+    snprintf(pending, sizeof(pending), "%s.tmp", TileList);
+    FILE *file = fopen(pending, "wb");
+    if (!file)
+        return false;
+    bool ok = fwrite(text.data(), 1, text.size(), file) == text.size() && fflush(file) == 0 && fsync(fileno(file)) == 0;
+    if (fclose(file))
+        ok = false;
+    if (!ok || rename(pending, TileList)) {
+        unlink(pending);
+        return false;
+    }
+    return true;
+}
+
+static OwnTile *own_tile(const Game &game)
+{
+    for (OwnTile &tile : load_own_tiles())
+        if (tile.path == game.path)
+            return &tile;
+    return nullptr;
+}
+
+// "01.00" -> "01.01" (APP_VER goes up with every rebuild, so the PS4 takes the new name and icon)
+static std::string next_version(const std::string &version)
+{
+    int major = 1, minor = -1;
+    if (sscanf(version.c_str(), "%d.%d", &major, &minor) != 2)
+        return "01.00";
+    if (++minor > 99) {
+        minor = 0;
+        ++major;
+    }
+    char text[8];
+    snprintf(text, sizeof(text), "%02d.%02d", std::min(major, 99), minor);
+    return text;
+}
+
+static bool read_all(const char *path, std::vector<uint8_t> &out)
+{
+    FILE *file = fopen(path, "rb");
+    if (!file)
+        return false;
+    out.clear();
+    uint8_t buffer[65536];
+    size_t n;
+    while ((n = fread(buffer, 1, sizeof(buffer), file)) > 0)
+        out.insert(out.end(), buffer, buffer + n);
+    const bool ok = !ferror(file);
+    fclose(file);
+    return ok && !out.empty();
+}
+
+// The installed emulator: its usual title ID, else any installed app whose ID starts with prefix.
+static std::string find_emulator(const char *usual, const char *prefix)
+{
+    if (sys::app_installed(usual))
+        return usual;
+    sys::Elevated elevated;
+    std::string found;
+    if (DIR *dir = opendir("/user/app")) {
+        while (dirent *entry = readdir(dir))
+            if (!strncmp(entry->d_name, prefix, 4) && strlen(entry->d_name) == 9 && (found.empty() || found > entry->d_name))
+                found = entry->d_name;
+        closedir(dir);
+    }
+    return found;
+}
+
+// A UTF-8 name of at most max bytes, not cut in the middle of a character.
+static std::string utf8_cut(std::string text, size_t max)
+{
+    if (text.size() <= max)
+        return text;
+    size_t end = max;
+    while (end > 0 && (static_cast<uint8_t>(text[end]) & 0xC0) == 0x80)
+        --end;
+    return text.substr(0, end);
+}
+
+// Builds this game's tile (emulator: "DLPH00010"-like or "EMSN00001"-like title ID) and installs it.
+static void make_tile(const Game &game, const char *usual_emulator, const char *emulator_name, const char *cover)
+{
+    const std::string emulator = find_emulator(usual_emulator, std::string(usual_emulator, 4).c_str());
+    if (emulator.empty()) {
+        snprintf(status, sizeof(status), TR("Install %s first: the tile opens it.", "Installeer eerst %s: de tegel opent die."), emulator_name);
         return;
     }
-    (void)app;
-    char source[96], id[16], custom[96];
-    snprintf(source, sizeof(source), "%s/%s%02d.pkg", Templates, kind.package_prefix, slot);
-    snprintf(id, sizeof(id), "%s%05d", kind.app_prefix, slot);
+    // Title ID: the one this game had, else the next free EFWD number.
+    OwnTile *tile = own_tile(game);
+    OwnTile fresh;
+    if (!tile) {
+        int highest = 0;
+        for (const OwnTile &t : load_own_tiles())
+            highest = std::max(highest, atoi(t.id.c_str() + 4));
+        char id[16];
+        snprintf(id, sizeof(id), "EFWD%05d", highest + 1);
+        fresh = {id, "", game.path};
+    }
+    const std::string id = tile ? tile->id : fresh.id;
+    std::string version = next_version(tile ? tile->version : "");
+    const std::string have = sys::installed_version(id.c_str());
+    if (!have.empty() && have >= version)
+        version = next_version(have);
+    const std::string title = utf8_cut(tile_title(game), 127);
+    sys::log("tegel bouwen: %s %s \"%s\" (%s) voor %s", id.c_str(), version.c_str(), title.c_str(), emulator.c_str(), game.path);
+
+    // The icon: the chosen one, else the cover made into an icon, else the plain game icon.
+    char custom[96];
     custom_icon_path(game, custom);
-    const std::string title = tile_title(game);
-    place_tile(id, source, title.c_str(), true, custom, cover);
-    if (!(cover && exists(cover)) && !exists(custom))
+    std::vector<uint8_t> icon;
+    if (exists(custom))
+        read_all(custom, icon);
+    if (icon.empty() && cover && exists(cover) && make_icon(cover, "/data/PS4Tegelmaker/icon-tmp.png"))
+        read_all("/data/PS4Tegelmaker/icon-tmp.png", icon);
+    const bool own_icon = !icon.empty();
+    if (icon.empty())
+        read_all("/app0/tile/icon0.png", icon);
+
+    pkgbuild::Project project;
+    project.content_id = "IV0000-" + id + "_00-EMUFORWARDTILE00";  // 36 characters
+    project.timestamp = time(nullptr);
+    char date[16];
+    const time_t now = project.timestamp;
+    strftime(date, sizeof(date), "%Y%m%d", gmtime(&now));
+    project.c_date = date;
+    pkgbuild::Sfo &sfo = project.sfo;
+    sfo.set_int("APP_TYPE", 1);
+    sfo.set_text("APP_VER", version, 8);
+    sfo.set_int("ATTRIBUTE", 0);
+    sfo.set_text("CATEGORY", "gd", 4);
+    sfo.set_text("CONTENT_ID", project.content_id, 48);
+    sfo.set_int("DOWNLOAD_DATA_SIZE", 0);
+    sfo.set_int("SYSTEM_VER", 0);
+    sfo.set_text("TITLE", title, 128);
+    sfo.set_text("TITLE_ID", id, 12);
+    sfo.set_text("VERSION", "01.00", 8);
+    const struct { const char *from, *to; } parts[] = {
+        {"/app0/tile/eboot.bin", "eboot.bin"},
+        {"/app0/sce_module/libc.prx", "sce_module/libc.prx"},
+        {"/app0/sce_module/libSceFios2.prx", "sce_module/libSceFios2.prx"},
+        {"/app0/sce_sys/about/right.sprx", "sce_sys/about/right.sprx"},
+    };
+    for (const auto &part : parts) {
+        std::vector<uint8_t> data;
+        if (!read_all(part.from, data)) {
+            snprintf(status, sizeof(status), TR("A part of the tile is missing: %s", "Een deel van de tegel ontbreekt: %s"), part.from);
+            sys::log("tegel: %s ontbreekt", part.from);
+            return;
+        }
+        project.files.push_back({part.to, std::move(data)});
+    }
+    const std::string forward = "emu=" + emulator + "\ngame=" + game.path + "\n";
+    project.files.push_back({"forward.txt", std::vector<uint8_t>(forward.begin(), forward.end())});
+    project.files.push_back({"sce_sys/icon0.png", std::move(icon)});
+
+    snprintf(status, sizeof(status), TR("Building the tile for %s...", "Tegel voor %s bouwen..."), title.c_str());
+    draw();
+    std::vector<uint8_t> package = pkgbuild::build(project);
+    mkdir(TileBuild, 0777);
+    char path[96];
+    snprintf(path, sizeof(path), "%s/%s.pkg", TileBuild, id.c_str());
+    FILE *out = fopen(path, "wb");
+    bool written = out && fwrite(package.data(), 1, package.size(), out) == package.size();
+    if (out && fclose(out))
+        written = false;
+    sys::log("tegel %s: %zu bytes naar %s%s", id.c_str(), package.size(), path, written ? "" : " MISLUKT");
+    std::vector<uint8_t>().swap(package);
+    if (!written) {
+        unlink(path);
+        snprintf(status, sizeof(status), TR("Couldn't save the tile. Check free space.", "Kan de tegel niet opslaan. Controleer vrije ruimte."));
+        return;
+    }
+    if (tile) {
+        tile->version = version;
+    } else {
+        fresh.version = version;
+        own_tiles.push_back(fresh);
+    }
+    save_own_tiles();
+    // A tile that is there already is removed first: the new one is a clean install (installing over it
+    // went through, but right after that the PS4's database got damaged, 2026-11-18).
+    if (sys::app_installed(id.c_str()))
+        sys::uninstall(id.c_str());
+    // Name and icon are in the package: nothing is written to the PS4's database or appmeta.
+    const bool placed = place_tile(id.c_str(), path, title.c_str(), false, nullptr, nullptr);
+    unlink(path);  // installed (or copied to the installer folder)
+    if (placed)
+        snprintf(status, sizeof(status), TR("%s is on your home screen. It opens %s.", "%s staat op je home screen. Hij opent %s."), title.c_str(), emulator_name);
+    if (!own_icon)
         snprintf(status + strlen(status), sizeof(status) - strlen(status),
                  TR(" No cover found: choose one with Options.", " Geen hoes gevonden: kies er een met Options."));
 }
@@ -1569,7 +1754,7 @@ static void prepare_slot(const Game &game)
     }
     char cover[128];
     snprintf(cover, sizeof(cover), "%s/%s.png", Covers, disc);
-    prepare_general(GameCubeSlots, game, cover);
+    make_tile(game, "DLPH00010", "DolphinPS4", cover);
 }
 
 // Retrocade games (NDS, 3DS, GBA, ...): EmuSuNi plays them; cover from EmuSuNi's covers,
@@ -1637,12 +1822,17 @@ static void prepare_retro(const Game &game)
     }
     char cover[512];
     const int length = snprintf(cover, sizeof(cover), "%s/%s/%s.png", RetroCovers, game.system, game.name);
-    prepare_general(RetroSlots, game, length > 0 && length < static_cast<int>(sizeof(cover)) ? cover : nullptr);
+    make_tile(game, "EMSN00001", "EmuSuNi", length > 0 && length < static_cast<int>(sizeof(cover)) ? cover : nullptr);
 }
 
 // The tile that currently plays this game, as title ID; nullptr when it has none yet.
+// Its own tile (since 1.1) first, then the old catalog and general tiles.
 static const char *tile_for(const Game &game, char (&id)[16])
 {
+    if (const OwnTile *own = own_tile(game)) {
+        snprintf(id, sizeof(id), "%s", own->id.c_str());
+        return id;
+    }
     if (game.tile) {
         snprintf(id, sizeof(id), "TGCG%05d", static_cast<int>(game.tile - Catalog) + 1);
         return id;
@@ -1938,12 +2128,9 @@ static void prepare_tile(const Game &game)
         return;
     }
 
-    char source[96], id[16], custom[96];
-    snprintf(source, sizeof(source), "%s/%s.pkg", Templates, disc);
-    snprintf(id, sizeof(id), "TGCG%05d", static_cast<int>(game.tile - Catalog) + 1);
-    custom_icon_path(game, custom);
-    const std::string title = tile_title(game);
-    place_tile(id, source, title.c_str(), title != game.tile->title, custom, nullptr);
+    char cover[128];
+    snprintf(cover, sizeof(cover), "%s/%s.png", Covers, disc);
+    make_tile(game, "DLPH00010", "DolphinPS4", cover);
 }
 
 // Back to the cover the emulator has (also on the tile, when it is installed).
@@ -1971,12 +2158,44 @@ static void reset_icon(const Game &game)
                                           : TR("Own icon removed.", "Eigen icoon verwijderd."));
 }
 
+// The left stick works as the D-pad; in the icon editor the right stick zooms (up = R2, down = L2).
+static uint32_t stick_buttons(const OrbisPadData &input)
+{
+    const int dead = 64;
+    uint32_t bits = 0;
+    const int x = int(input.leftStick.x) - 128, y = int(input.leftStick.y) - 128;
+    if (abs(x) > dead || abs(y) > dead) {
+        if (abs(x) > abs(y))
+            bits |= x < 0 ? ORBIS_PAD_BUTTON_LEFT : ORBIS_PAD_BUTTON_RIGHT;
+        else
+            bits |= y < 0 ? ORBIS_PAD_BUTTON_UP : ORBIS_PAD_BUTTON_DOWN;
+    }
+    const int zoom = int(input.rightStick.y) - 128;
+    if (editor.open && editor.adjusting && abs(zoom) > dead)
+        bits |= zoom < 0 ? ORBIS_PAD_BUTTON_R2 : ORBIS_PAD_BUTTON_L2;
+    return bits;
+}
+
+static long long now_ms()
+{
+    timespec t{};
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+static uint32_t held_directions = 0;
+static long long held_since = 0, last_repeat = 0;
+
 static int ef_app_main()
 {
     mkdir(AppData, 0777);
     ef_install_crash_handler();
     sys::log("EmuForwarder " EF_VERSION " start (build %d)", EF_BUILD);
     online::load_settings();
+    // EFHelper (test builds 1.0.10-1.0.15) made the PS4 crash: remove it when it is still there.
+    if (helper::installed()) {
+        std::string error;
+        sys::log("EFHelper gevonden: verwijderen (%s)", helper::uninstall(error) ? "gelukt" : error.c_str());
+    }
     mkdir(Mappings, 0777);
     mkdir("/data/DolphinPS4", 0777);
     mkdir(Library, 0777);
@@ -2071,9 +2290,24 @@ static int ef_app_main()
             update_reported = false;
 
         OrbisPadData input{};
-        const uint32_t buttons = scePadReadState(pad, &input) >= 0 ? input.buttons : 0;
-        const uint32_t pressed = buttons & ~previous;
+        uint32_t buttons = 0;
+        if (scePadReadState(pad, &input) >= 0)
+            buttons = input.buttons | stick_buttons(input);
+        uint32_t pressed = buttons & ~previous;
         previous = buttons;
+        // Holding a direction (stick or D-pad) keeps moving: after 0.35 s, a step every 0.09 s.
+        {
+            const uint32_t directions = buttons & (ORBIS_PAD_BUTTON_UP | ORBIS_PAD_BUTTON_DOWN | ORBIS_PAD_BUTTON_LEFT | ORBIS_PAD_BUTTON_RIGHT);
+            const long long now = now_ms();
+            if (directions != held_directions) {
+                held_directions = directions;
+                held_since = last_repeat = now;
+            } else if (directions && now - held_since > 350 && now - last_repeat > 90) {
+                last_repeat = now;
+                if (!(editor.open && editor.adjusting))  // there holding already moves the picture
+                    pressed |= directions;
+            }
+        }
         // Draw only when something changed: a button, a held editor button, new text, a cover loading.
         const uint32_t moving = ORBIS_PAD_BUTTON_UP | ORBIS_PAD_BUTTON_DOWN | ORBIS_PAD_BUTTON_LEFT |
                                 ORBIS_PAD_BUTTON_RIGHT | ORBIS_PAD_BUTTON_L2 | ORBIS_PAD_BUTTON_R2;

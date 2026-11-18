@@ -6,5 +6,6 @@ native/out/
 tegels-v0.2/
 GameCube-pakketten/
 tile/
+!native/tile/
 verbinding.py
 __pycache__/

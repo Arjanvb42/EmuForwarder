@@ -508,7 +508,30 @@ static bool set_sfo_title(const char *title_id, const char *title)
 static std::string db_title(const char *title_id);
 
 // The home screen shows titleName from tbl_appbrowse_0<user> in the app database.
+static bool set_title_in_db(const char *title_id, const char *title);
+
+// Switched off since 2026-11-18: writing the PS4's app database (app.db) while the system has it open
+// corrupted it and made the PS4 rebuild it (all homebrew left the home screen). Tiles now carry their
+// name and icon in their own package, so EmuForwarder never writes app.db or a system param.sfo.
 static bool set_title(const char *title_id, const char *title)
+{
+    log("naam van %s niet in de database gezet (uitgeschakeld): \"%s\"", title_id, title);
+    return false;
+}
+
+// Uninstalls an app (a tile that is built again), so the new package is a clean install.
+static bool uninstall(const char *title_id)
+{
+    std::string error;
+    if (!init_install(error))
+        return false;
+    Elevated elevated;
+    const int32_t rc = sceAppInstUtilAppUnInstall(title_id);
+    log("verwijderen %s: 0x%08x", title_id, unsigned(rc));
+    return rc == 0;
+}
+
+[[maybe_unused]] static bool set_title_in_db(const char *title_id, const char *title)
 {
     Elevated elevated;
     log("naam in param.sfo van %s: %s", title_id, set_sfo_title(title_id, title) ? "gezet" : "niet gelukt");

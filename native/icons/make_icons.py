@@ -200,10 +200,19 @@ def updater(layers):
     title(layers("title"), layers("subtitle"), "EF", "Updater", "UPDATE TOOL", accent)
 
 
+def game_tile(layers):
+    """The icon of a game tile without a cover (until one is chosen with Options): just the game card."""
+    card = layers("card")
+    framed(card, (424, 324, 1624, 1724), 150, 60)
+    inv, di = new_mask()
+    invader(di, S / 2 - 5.5 * 84, S / 2 - 4 * 84 + 40, 84)
+    paint(card, inv, GREY)
+
+
 APPS = {"emuforwarder": (forwarder, (20, 90, 200)), "efupdater": (updater, (230, 100, 20))}
 
 if __name__ == "__main__":
-    for name, (make, glow_colour) in APPS.items():
+    for name, (make, glow_colour) in list(APPS.items()) + [("tile", (game_tile, (20, 90, 200)))]:
         tile = background(glow_colour)
         make(Layers(tile))
         tile.resize((512, 512), Image.LANCZOS).save(HERE / f"{name}.png", optimize=True)

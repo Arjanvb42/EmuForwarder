@@ -1,5 +1,5 @@
-build=34
-version=v1.0.1
-size=12517376
-fnv=708953e80dcedf10
-notes=English by default; Dutch under Settings > Language
+build=35
+version=v1.1.0
+size=12910592
+fnv=7604d5ab811cfc95
+notes=Small tiles (about 7 MB) built on the PS4 itself, as many as you like; full-screen settings; left stick control

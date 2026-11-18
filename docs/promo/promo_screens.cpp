@@ -110,6 +110,13 @@ int main(int argc, char **argv)
     ui::library(v);
     save(s, out + "/name.png");
 
+    // the update question at start (for the EFUpdater page)
+    v.menu_title = "New version: v1.0.2  -  Faster icon editor";
+    v.menu_items = {"Download to /data/pkg", "Later"};
+    v.menu_selected = 0;
+    ui::library(v);
+    save(s, out + "/update.png");
+
     v.menu_open = false;
     v.status_is_news = true;
     const int steps[] = {12, 47, 83, 100};

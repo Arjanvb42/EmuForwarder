@@ -208,6 +208,49 @@ static int text(const char *label, FT_Face font, int left, int baseline, int rig
     return cursor;
 }
 
+// Splits text into lines of at most `width` pixels: at spaces, and inside a word only when the word alone
+// is too wide (between letters, never inside a UTF-8 character).
+static std::vector<std::string> wrap(const std::string &label, FT_Face font, int width)
+{
+    std::vector<std::string> lines;
+    std::string line;
+    size_t at = 0;
+    while (at < label.size()) {
+        while (at < label.size() && label[at] == ' ')
+            ++at;
+        if (at >= label.size())
+            break;
+        size_t end = label.find(' ', at);
+        if (end == std::string::npos)
+            end = label.size();
+        std::string word = label.substr(at, end - at);
+        at = end;
+        const std::string joined = line.empty() ? word : line + " " + word;
+        if (text_width(joined.c_str(), font) <= width) {
+            line = joined;
+            continue;
+        }
+        if (!line.empty()) {
+            lines.push_back(line);
+            line.clear();
+        }
+        while (text_width(word.c_str(), font) > width) {  // one long word: break it
+            size_t cut = word.size();
+            while (cut > 1 && text_width(word.substr(0, cut).c_str(), font) > width) {
+                --cut;
+                while (cut > 1 && (static_cast<unsigned char>(word[cut]) & 0xC0) == 0x80)
+                    --cut;
+            }
+            lines.push_back(word.substr(0, cut));
+            word.erase(0, cut);
+        }
+        line = word;
+    }
+    if (!line.empty() || lines.empty())
+        lines.push_back(line);
+    return lines;
+}
+
 static void text_center(const char *label, FT_Face font, int center, int baseline, Color bg, Color fg, bool bold = false)
 {
     const int width = text_width(label, font);
@@ -352,8 +395,9 @@ struct LibraryView {
     std::string detail_title, detail_line;  // about the selected game
     std::string status;
     bool status_is_news = false;  // shown highlighted for a few seconds
-    // Action menu (X)
+    // Action menu (X), or the full-screen settings
     bool menu_open = false;
+    bool menu_settings = false;
     std::string menu_title;
     std::vector<std::string> menu_items;
     int menu_selected = 0;
@@ -377,24 +421,115 @@ static void header(const char *title, const char *subtitle, const uint8_t *icon,
     }
 }
 
+// The action menu: a card in the middle; long titles and items wrap onto more lines.
 static void menu(const LibraryView &v)
 {
-    const int w = 760, row = 66, h = 120 + int(v.menu_items.size()) * row + 30;
+    const int w = 900, line_title = 48, line_item = 38;
+    const std::vector<std::string> title = wrap(v.menu_title, font_large, w - 80);
+    std::vector<std::vector<std::string>> items;
+    int items_h = 0;
+    for (const std::string &item : v.menu_items) {
+        items.push_back(wrap(item, font_body, w - 120));
+        items_h += int(items.back().size()) * line_item + 28;
+    }
+    const int title_h = int(title.size()) * line_title;
+    const int h = std::min(ScreenH - 80, 50 + title_h + 24 + items_h + 30);
     const int x = (ScreenW - w) / 2, y = (ScreenH - h) / 2;
     round_rect(x - 6, y - 6, w + 12, h + 12, 34, Accent, background_at(y));
     round_rect(x, y, w, h, 30, Card, Accent);
-    text(v.menu_title.c_str(), font_large, x + 40, y + 70, x + w - 40, Card, Text, true);
-    for (size_t i = 0; i < v.menu_items.size(); ++i) {
-        const int ry = y + 100 + int(i) * row;
+    for (size_t i = 0; i < title.size(); ++i)
+        text(title[i].c_str(), font_large, x + 40, y + 70 + int(i) * line_title, x + w - 40, Card, Text, true);
+    int ry = y + 50 + title_h + 24;
+    for (size_t i = 0; i < items.size() && ry < y + h - 20; ++i) {
+        const int row = int(items[i].size()) * line_item + 28;
         const bool on = int(i) == v.menu_selected;
         if (on)
             round_rect(x + 24, ry, w - 48, row - 8, 16, Accent, Card);
-        text(v.menu_items[i].c_str(), font_body, x + 52, ry + 39, x + w - 40, on ? Accent : Card, on ? Text : Sub, on);
+        for (size_t l = 0; l < items[i].size(); ++l)
+            text(items[i][l].c_str(), font_body, x + 52, ry + 37 + int(l) * line_item, x + w - 40, on ? Accent : Card, on ? Text : Sub, on);
+        ry += row;
     }
+}
+
+// Settings as a full-screen page: each setting on its own row, its value on the right, long text
+// wrapped; the list scrolls with the selection.
+static void settings_screen(const LibraryView &v)
+{
+    drawing = "instellingen";
+    background();
+    header(TR("Settings", "Instellingen"), v.version, v.app_icon, "");
+    const int left = 96, right = 1824, top = 180, bottom = 900, line_h = 40, pad = 15;
+    struct Row {
+        std::vector<std::string> label;
+        std::string value;
+        int height;
+    };
+    std::vector<Row> rows;
+    for (const std::string &item : v.menu_items) {
+        Row row;
+        // "Name: value" -> the value on the right, when it is short
+        const size_t colon = item.find(": ");
+        int label_width = right - left - 80;
+        std::string label = item;
+        if (colon != std::string::npos && item.size() - colon - 2 <= 48) {
+            row.value = item.substr(colon + 2);
+            label = item.substr(0, colon);
+            label_width -= text_width(row.value.c_str(), font_body) + 60;
+        }
+        row.label = wrap(label, font_body, label_width);
+        row.height = int(row.label.size()) * line_h + pad * 2;
+        rows.push_back(row);
+    }
+    // First row shown: as high as possible while the selected one still fits.
+    int first = 0;
+    for (;;) {
+        int used = 0;
+        for (int i = first; i <= v.menu_selected && i < int(rows.size()); ++i)
+            used += rows[i].height + 10;
+        if (used <= bottom - top || first >= v.menu_selected)
+            break;
+        ++first;
+    }
+    int y = top, last = first - 1;
+    for (int i = first; i < int(rows.size()); ++i) {
+        const Row &row = rows[i];
+        if (y + row.height > bottom)
+            break;
+        last = i;
+        const bool on = i == v.menu_selected;
+        const Color under = background_at(y);
+        const Color fill = on ? Accent : Card;
+        round_rect(left, y, right - left, row.height, 18, fill, under);
+        for (size_t l = 0; l < row.label.size(); ++l)
+            text(row.label[l].c_str(), font_body, left + 40, y + pad + 31 + int(l) * line_h, right - 40, fill, Text, on);
+        if (!row.value.empty()) {
+            const int vw = text_width(row.value.c_str(), font_body);
+            text(row.value.c_str(), font_body, right - 40 - vw, y + pad + 31, right - 20, fill, on ? Text : Sub, on);
+        }
+        y += row.height + 10;
+    }
+    // Scroll mark when not everything fits.
+    if (first > 0)
+        text_center("...", font_body, ScreenW / 2, top - 12, background_at(top - 12), Sub);
+    if (last < int(rows.size()) - 1)
+        text_center("...", font_body, ScreenW / 2, bottom + 20, background_at(bottom + 20), Sub);
+    const int fy = 958;
+    rect(96, fy - 26, 1728, 2, Line);
+    const std::vector<std::string> status = wrap(v.status, font_small, 1000);
+    for (size_t l = 0; l < status.size() && l < 3; ++l)
+        text(status[l].c_str(), font_small, 96, fy + 14 + int(l) * 32, 1100, background_at(fy + 14 + int(l) * 32),
+             v.status_is_news ? Warn : Sub, v.status_is_news);
+    hints({{Button::DPad, TR("Select", "Kiezen")}, {Button::Cross, TR("Change", "Wijzigen")}, {Button::Circle, TR("Back", "Terug")}},
+          1824, fy + 10, background_at(fy + 10));
+    drawing = "";
 }
 
 static void library(const LibraryView &v)
 {
+    if (v.menu_open && v.menu_settings) {
+        settings_screen(v);
+        return;
+    }
     drawing = "achtergrond";
     background();
     drawing = "kop";
