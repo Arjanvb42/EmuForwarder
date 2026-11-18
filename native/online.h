@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,8 @@ struct Settings {
     bool steamgriddb = true;       // use it in the icon editor when there is a key
     bool only_steamgriddb = false;  // skip GameTDB and libretro (faster)
     bool auto_update = true;        // look for a newer EmuForwarder on GitHub at start
+    bool music = true;              // play the files in /data/PS4Tegelmaker/muziek
+    int music_volume = 60;          // percent
 };
 
 static Settings settings;
@@ -51,6 +54,10 @@ static void load_settings()
             settings.only_steamgriddb = value == "aan";
         else if (key == "updates_zoeken")
             settings.auto_update = value != "uit";
+        else if (key == "muziek")
+            settings.music = value != "uit";
+        else if (key == "muziek_volume")
+            settings.music_volume = std::max(0, std::min(100, atoi(value.c_str())));
     }
     fclose(file);
 }
@@ -62,9 +69,9 @@ static bool save_settings()
     FILE *file = fopen(pending, "w");
     if (!file)
         return false;
-    fprintf(file, "# EmuForwarder-instellingen\nsteamgriddb_key=%s\nsteamgriddb=%s\nalleen_steamgriddb=%s\nupdates_zoeken=%s\n",
+    fprintf(file, "# EmuForwarder-instellingen\nsteamgriddb_key=%s\nsteamgriddb=%s\nalleen_steamgriddb=%s\nupdates_zoeken=%s\nmuziek=%s\nmuziek_volume=%d\n",
             settings.steamgriddb_key.c_str(), settings.steamgriddb ? "aan" : "uit", settings.only_steamgriddb ? "aan" : "uit",
-            settings.auto_update ? "aan" : "uit");
+            settings.auto_update ? "aan" : "uit", settings.music ? "aan" : "uit", settings.music_volume);
     const bool ok = fclose(file) == 0 && rename(pending, SettingsFile) == 0;
     if (!ok)
         unlink(pending);

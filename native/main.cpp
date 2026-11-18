@@ -20,6 +20,7 @@
 #include "system.h"
 #include "online.h"
 #include "update.h"
+#include "music.h"
 
 extern "C" const char *ef_step;
 extern "C" void ef_install_crash_handler();
@@ -322,7 +323,7 @@ static struct Menu {
 } menu;
 enum Action { TileAction, IconAction, ResetIconAction, CopyAction, MoveAction, ConfirmMoveAction, CancelAction,
               KeyAction, ToggleSteamGridAction, ClearKeyAction, OnlySteamGridAction, AutoUpdateAction,
-              CheckUpdateAction, InstallUpdateAction, ConfirmTileAction, RenameAction };
+              CheckUpdateAction, InstallUpdateAction, ConfirmTileAction, RenameAction, MusicAction, VolumeAction };
 static time_t exit_armed = 0;
 static char last_status[256];
 static time_t status_time;
@@ -477,6 +478,13 @@ static void open_settings(int keep_selected = 0)
         menu.items.push_back("SteamGridDB-sleutel wissen");
         menu.actions.push_back(ClearKeyAction);
     }
+    char music_label[160];
+    snprintf(music_label, sizeof(music_label), "Achtergrondmuziek: %s  (%d nummer(s) in /data/PS4Tegelmaker/muziek)",
+             online::settings.music ? "aan" : "uit", music::track_count);
+    menu.items.push_back(music_label);
+    menu.actions.push_back(MusicAction);
+    menu.items.push_back("Volume muziek: " + std::to_string(online::settings.music_volume) + "%");
+    menu.actions.push_back(VolumeAction);
     menu.items.push_back(std::string("Bij het starten naar updates zoeken: ") + (online::settings.auto_update ? "aan" : "uit"));
     menu.actions.push_back(AutoUpdateAction);
     if (update::done && update::newer()) {
@@ -568,6 +576,16 @@ static void run_menu_action()
             online::save_settings();
         } else if (action == ToggleSteamGridAction) {
             online::settings.steamgriddb = !online::settings.steamgriddb;
+            online::save_settings();
+        } else if (action == MusicAction) {
+            online::settings.music = !online::settings.music;
+            music::enabled = online::settings.music;
+            online::save_settings();
+            if (online::settings.music && music::track_count == 0)
+                snprintf(status, sizeof(status), "Zet .ogg- of .wav-bestanden (16-bit) in /data/PS4Tegelmaker/muziek (via FTP).");
+        } else if (action == VolumeAction) {
+            online::settings.music_volume = online::settings.music_volume >= 100 ? 20 : online::settings.music_volume + 20;
+            music::volume = online::settings.music_volume;
             online::save_settings();
         } else if (action == AutoUpdateAction) {
             online::settings.auto_update = !online::settings.auto_update;
@@ -1969,6 +1987,10 @@ static int ef_app_main()
     // the app keeps running underneath while the screen stays on the boot image.
     sceSystemServiceHideSplashScreen();
     update::started();  // this version starts fine: the starter may keep using it
+    mkdir(music::Folder, 0777);
+    music::enabled = online::settings.music;
+    music::volume = online::settings.music_volume;
+    music::start();
     if (online::settings.auto_update)
         update::check();
     bool update_reported = false;

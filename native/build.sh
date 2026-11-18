@@ -22,6 +22,9 @@ cp "$oo/samples/font/sce_module/"{libc,libSceFios2}.prx "$stage/sce_module/"
 cp "$oo/samples/font/sce_sys/about/right.sprx" "$stage/sce_sys/about/"
 cp "$oo/samples/font/assets/fonts/"{Gontserrat-Regular.ttf,OFL.txt} "$stage/assets/fonts/"
 cp "$native/icon0.png" "$stage/sce_sys/"
+# Ogg Vorbis decoder for the background music (stb_vorbis, public domain).
+"$llvm/bin/clang" --target=x86_64-pc-freebsd12-elf -fPIC -O2 -funwind-tables -isysroot "$oo" -isystem "$oo/include" \
+    -c "$native/vorbis.c" -o "$stage/.build/vorbis.o"
 for source in "$native/main.cpp" "$native/crash.cpp" "$native/graphics.cpp"; do
     "$llvm/bin/clang++" --target=x86_64-pc-freebsd12-elf -std=gnu++17 -D_GNU_SOURCE -fPIC -O2 \
         -funwind-tables -DEF_BUILD=$build -DEF_VERSION="\"$label\"" -DGRAPHICS_USES_FONT -DTEGELMAKER_PS4 -isysroot "$oo" -isystem "$oo/include" \
@@ -36,15 +39,15 @@ sqlite="$tools/../sqlite/sqlite-amalgamation-3470200/sqlite3.c"
 "$llvm/bin/ld.lld" -m elf_x86_64 -pie --script "$oo/link.x" --eh-frame-hdr -L"$oo/lib" \
     "$oo/lib/crt1.o" "$stage/.build/"*.o -lc -lkernel -lc++ -lc++abi \
     -lSceVideoOut -lSceFreeType -lSceSysmodule -lScePad -lSceUserService -lSceSystemService -lSceNet -lSceNetCtl \
-    -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog \
+    -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog -lSceAudioOut \
     -o "$stage/.build/app.elf"
 mkdir -p "$out" && cp "$stage/.build/app.elf" "$out/app.elf"
 # The same program as a module (emuforwarder.prx): the starter loads it, and updates replace it.
 "$llvm/bin/ld.lld" -m elf_x86_64 -pie --script "$oo/link.x" --eh-frame-hdr -L"$oo/lib" \
-    "$stage/.build/"main.o "$stage/.build/"crash.o "$stage/.build/"graphics.o "$stage/.build/"sqlite3.o \
+    "$stage/.build/"main.o "$stage/.build/"crash.o "$stage/.build/"graphics.o "$stage/.build/"sqlite3.o "$stage/.build/"vorbis.o \
     -lc -lkernel -lc++ -lc++abi \
     -lSceVideoOut -lSceFreeType -lSceSysmodule -lScePad -lSceUserService -lSceSystemService -lSceNet -lSceNetCtl \
-    -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog \
+    -lSceAppInstUtil -lSceBgft -lSceHttp -lSceSsl -lSceImeDialog -lSceAudioOut \
     "$oo/lib/crtlib.o" -o "$stage/.build/module.elf"
 cp "$stage/.build/module.elf" "$out/module.elf"
 "$bin/create-fself" -in "$stage/.build/module.elf" -out "$stage/.build/module.oelf" \
