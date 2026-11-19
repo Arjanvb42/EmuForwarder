@@ -1,5 +1,5 @@
-build=35
-version=v1.1.0
-size=12910592
-fnv=7604d5ab811cfc95
-notes=Small tiles (about 7 MB) built on the PS4 itself, as many as you like; full-screen settings; left stick control
+build=45
+version=v1.1.10
+size=14155776
+fnv=552699414651e8ef
+notes=Select several games with L2: install their tiles at once or make one collection tile; clean up the old tiles from before 1.1 in Settings
