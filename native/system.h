@@ -226,13 +226,16 @@ static std::vector<uint8_t> read_part(const char *path, long offset, size_t size
 }
 
 // APP_VER inside a package: the PARAM_SFO entry (id 0x1000) of the big-endian entry table.
-static std::string package_version(const char *package)
+static std::string package_version(const char *package, const char *content_id = nullptr)
 {
     auto be = [](const std::vector<uint8_t> &d, size_t at) {
         return at + 4 <= d.size() ? uint32_t(d[at] << 24 | d[at + 1] << 16 | d[at + 2] << 8 | d[at + 3]) : 0u;
     };
-    const std::vector<uint8_t> header = read_part(package, 0, 0x20);
-    if (header.size() < 0x20 || memcmp(header.data(), "\x7f" "CNT", 4))
+    const size_t header_size = content_id ? 0x40 + 36 : 0x20;
+    const std::vector<uint8_t> header = read_part(package, 0, header_size);
+    if (header.size() != header_size || memcmp(header.data(), "\x7f" "CNT", 4))
+        return "";
+    if (content_id && memcmp(header.data() + 0x40, content_id, 36))
         return "";
     const uint32_t count = be(header, 0x10), table = be(header, 0x18);
     const std::vector<uint8_t> entries = read_part(package, table, size_t(std::min(count, 64u)) * 32);

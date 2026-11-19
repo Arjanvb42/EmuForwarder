@@ -382,6 +382,7 @@ struct CardView {
     const uint8_t *thumb;     // ThumbSize x ThumbSize RGB, or null while it loads / when there is none
     bool on_usb;              // not on the internal disk yet
     bool tile_installed;
+    bool marked = false;
 };
 
 struct LibraryView {
@@ -392,6 +393,8 @@ struct LibraryView {
     std::vector<CardView> cards;
     int selected = 0;
     int first_row = 0;
+    bool multi_select = false;
+    int marked_count = 0;
     std::string detail_title, detail_line;  // about the selected game
     std::string status;
     bool status_is_news = false;  // shown highlighted for a few seconds
@@ -535,6 +538,8 @@ static void library(const LibraryView &v)
     drawing = "kop";
     char counts[64];
     snprintf(counts, sizeof(counts), "%d games", int(v.cards.size()));
+    if (v.multi_select)
+        snprintf(counts, sizeof(counts), TR("%d selected", "%d geselecteerd"), v.marked_count);
     header("EmuForwarder", v.version, v.app_icon, counts);
 
     drawing = "tabs";
@@ -579,6 +584,17 @@ static void library(const LibraryView &v)
                 round_rect(x + 16, y + 16, ThumbSize, ThumbSize, 16, Thumb, fill);
                 text_center(card.badge.c_str(), font_large, x + 16 + ThumbSize / 2, y + 16 + ThumbSize / 2 + 12, Thumb, Line, true);
             }
+            if (v.multi_select && !card.on_usb) {
+                const int cx = x + 42, cy = y + 42;
+                const Color checkbox = card.marked ? Accent : Card;
+                round_rect(cx - 17, cy - 17, 34, 34, 10, checkbox, Thumb);
+                if (card.marked) {
+                    thick_line(cx - 8, cy, cx - 2, cy + 6, 3.2f, Text, cx, cy, 14);
+                    thick_line(cx - 2, cy + 6, cx + 8, cy - 6, 3.2f, Text, cx, cy, 14);
+                } else {
+                    round_outline(cx - 17, cy - 17, 34, 34, 10, 2, Sub, Thumb);
+                }
+            }
             if (card.tile_installed) {  // a small "tile on the home screen" mark
                 disc(x + CardW - 40, y + 40, 15, Good, Thumb);
                 thick_line(x + CardW - 47, y + 40, x + CardW - 42, y + 46, 3.0f, Bg, x + CardW - 40, y + 40, 15);
@@ -617,9 +633,13 @@ static void library(const LibraryView &v)
         const Color sc = v.status_is_news ? Warn : Sub;
         text(v.status.c_str(), font_small, 96, fy + 92, 1824, background_at(fy + 92), sc, v.status_is_news);
     }
-    hints({{Button::Cross, TR("Select", "Kiezen")}, {Button::Options, TR("Icon", "Icoon")}, {Button::Square, TR("Settings", "Instellingen")},
-           {Button::Triangle, TR("Search", "Zoeken")}, {Button::Circle, TR("Close", "Sluiten")}},
-          1824, fy + 10, background_at(fy + 10));
+    if (v.multi_select)
+        hints({{Button::Cross, TR("Mark", "Markeren")}, {Button::Options, TR("Actions", "Acties")},
+               {Button::Circle, TR("Back", "Terug")}}, 1824, fy + 10, background_at(fy + 10));
+    else
+        hints({{Button::Cross, TR("Select", "Kiezen")}, {Button::Options, TR("Icon", "Icoon")},
+               {Button::L2, TR("Multi-select", "Multiselect")}, {Button::Square, TR("Settings", "Instellingen")},
+               {Button::Triangle, TR("Search", "Zoeken")}}, 1824, fy + 10, background_at(fy + 10));
     drawing = "menu";
     if (v.menu_open)
         menu(v);

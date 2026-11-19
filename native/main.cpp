@@ -25,6 +25,7 @@
 #include "intro.h"
 #include "pkg/pkgbuild.h"
 #include "helper.h"
+#include "tile/collection.h"
 
 extern "C" const char *ef_step;
 extern "C" void ef_install_crash_handler();
@@ -59,7 +60,7 @@ struct Tile {
 static constexpr Tile Catalog[] = {
 #include "catalog.inc"
 };
-static constexpr int MaxGames = 160;
+static constexpr int MaxGames = collection::MaxEntries;
 static constexpr int Rows = 9;
 
 struct Game {
@@ -97,7 +98,7 @@ static bool read_disc(const char *path, char (&id)[7]);
 static void custom_icon_path(const Game &game, char (&path)[96]);
 static const char *tile_for(const Game &game, char (&id)[16]);
 static bool directory_exists(const char *path);
-static void prepare_tile(const Game &game);
+static bool prepare_tile(const Game &game);
 static void transfer_game(Game chosen, bool move);
 static void open_editor(int index);
 static void reset_icon(const Game &game);
@@ -315,12 +316,16 @@ static void load_full_picture(Picture &picture)
 static std::vector<std::string> tab_keys;  // "" = everything, "gamecube", or a Retrocade console
 static int tab;
 static std::vector<int> view;              // indices into games[] shown under the current tab
+static bool multi_select;
+static std::vector<std::string> marked_paths;
 static struct Menu {
     bool open = false;
     bool confirm_move = false;
     bool settings = false;
     bool update = false;  // "a newer version is there" question
     bool confirm_name = false;  // "the tile gets this name" question
+    bool confirm_cleanup = false;  // "remove the old tiles?" question
+    std::string question;          // its text
     std::vector<std::string> items;
     std::vector<int> actions;
     int selected = 0;
@@ -328,7 +333,29 @@ static struct Menu {
 enum Action { TileAction, IconAction, ResetIconAction, CopyAction, MoveAction, ConfirmMoveAction, CancelAction,
               KeyAction, ToggleSteamGridAction, ClearKeyAction, OnlySteamGridAction, AutoUpdateAction,
               CheckUpdateAction, InstallUpdateAction, ConfirmTileAction, RenameAction, MusicAction, VolumeAction,
-              LanguageAction };
+              LanguageAction, CleanupAction, ConfirmCleanupAction, BatchTilesAction, NewCollectionAction, BrowseCollectionsAction,
+              EditCollectionAction, CollectionNameAction, CollectionIconAction, CollectionSaveAction, BackToSelectionAction, ResumeCollectionAction };
+static void open_selection_menu();
+static void run_selection_action(int action);
+static void reset_collection_draft();
+
+static auto marked_game(const char *path)
+{
+    return std::find(marked_paths.begin(), marked_paths.end(), path);
+}
+
+static void toggle_mark(const Game &game)
+{
+    if (!game.internal) {
+        snprintf(status, sizeof(status), "%s", TR("Copy the game to internal storage first.", "Kopieer de game eerst naar de interne schijf."));
+        return;
+    }
+    const auto at = marked_game(game.path);
+    if (at == marked_paths.end())
+        marked_paths.emplace_back(game.path);
+    else
+        marked_paths.erase(at);
+}
 static time_t exit_armed = 0;
 static char last_status[256];
 static time_t status_time;
@@ -463,6 +490,16 @@ static void open_menu()
     add(TR("Cancel", "Annuleren"), CancelAction);
 }
 
+// The tiles from before 1.1 (with the emulator inside): templates in /data/PS4Tegelmaker/tiles and the
+// installed GameCube/Retro/catalog tiles (and the launch test). Removed with Settings > Clean up.
+struct OldTiles {
+    int templates = 0;
+    long long bytes = 0;
+    std::vector<std::string> installed;
+};
+static OldTiles find_old_tiles();
+static void clean_up_old_tiles();
+
 static void open_settings(int keep_selected = 0)
 {
     menu = Menu{};
@@ -502,6 +539,14 @@ static void open_settings(int keep_selected = 0)
     }
     menu.items.push_back(TR("Language: English", "Taal: Nederlands"));
     menu.actions.push_back(LanguageAction);
+    const OldTiles old = find_old_tiles();
+    if (old.templates || !old.installed.empty()) {
+        char label[200];
+        snprintf(label, sizeof(label), TR("Clean up the old tiles from before 1.1 (%d template(s), %.1f GB; %d installed)", "Oude tegels van voor 1.1 opruimen (%d sjabloon/sjablonen, %.1f GB; %d geinstalleerd)"),
+                 old.templates, old.bytes / 1073741824.0, int(old.installed.size()));
+        menu.items.push_back(label);
+        menu.actions.push_back(CleanupAction);
+    }
     menu.items.push_back(TR("Close", "Sluiten"));
     menu.actions.push_back(CancelAction);
     menu.selected = std::min(keep_selected, int(menu.items.size()) - 1);
@@ -569,8 +614,20 @@ static void run_menu_action()
 {
     const int action = menu.actions[menu.selected];
     const int index = selected;
+    if (action >= BatchTilesAction) {
+        run_selection_action(action);
+        return;
+    }
     if (action == InstallUpdateAction) {
         install_update();
+        return;
+    }
+    if (menu.confirm_cleanup) {
+        menu.open = false;
+        if (action == ConfirmCleanupAction)
+            clean_up_old_tiles();
+        else
+            open_settings();
         return;
     }
     if (menu.update) {
@@ -607,6 +664,22 @@ static void run_menu_action()
         } else if (action == ToggleSteamGridAction) {
             online::settings.steamgriddb = !online::settings.steamgriddb;
             online::save_settings();
+        } else if (action == CleanupAction) {
+            const OldTiles old = find_old_tiles();
+            std::string list;
+            for (const std::string &id : old.installed)
+                list += (list.empty() ? "" : ", ") + id;
+            char question[512];
+            snprintf(question, sizeof(question),
+                     TR("Remove %d old template(s) (%.1f GB) and uninstall %d old tile(s)%s%s%s? Your new tiles, icons and names stay.",
+                        "%d oud(e) sjabloon/sjablonen (%.1f GB) weghalen en %d oude tegel(s) verwijderen%s%s%s? Je nieuwe tegels, iconen en namen blijven."),
+                     old.templates, old.bytes / 1073741824.0, int(old.installed.size()), list.empty() ? "" : " (", list.c_str(), list.empty() ? "" : ")");
+            menu = Menu{};
+            menu.open = menu.confirm_cleanup = true;
+            menu.question = question;
+            menu.items = {TR("Yes, clean up", "Ja, opruimen"), TR("Cancel", "Annuleren")};
+            menu.actions = {ConfirmCleanupAction, CancelAction};
+            return;
         } else if (action == LanguageAction) {
             lang::dutch = !lang::dutch;
             online::save_settings();
@@ -750,10 +823,12 @@ static void draw()
             }
         }
         v.tab = tab;
+        v.multi_select = multi_select;
+        v.marked_count = int(marked_paths.size());
         for (int index : view) {
             const Game &game = games[index];
             v.cards.push_back({game.name, console_label(game), game.thumb_state == 1 ? game.thumb.data() : nullptr,
-                               !game.internal, game.tile_installed});
+                               !game.internal, game.tile_installed, multi_select && marked_game(game.path) != marked_paths.end()});
         }
         const int position = view_position();
         v.selected = position;
@@ -778,11 +853,19 @@ static void draw()
                          : menu.update ? TR("New version: ", "Nieuwe versie: ") + update::latest.version +
                                              (update::latest.notes.empty() ? "" : "  -  " + update::latest.notes)
                          : menu.settings ? TR("Settings", "Instellingen")
+                         : !menu.question.empty() ? menu.question
                          : menu.confirm_move ? TR("Move? The USB copy is deleted after checking.", "Verplaatsen? De USB-kopie wordt gewist na controle.")
                                              : (view.empty() ? "" : games[selected].name);
             v.menu_settings = menu.settings;
             v.menu_items = menu.items;
             v.menu_selected = menu.selected;
+            if (!menu.actions.empty() && menu.actions.front() == EditCollectionAction) {
+                const int visible = 8;
+                const int top = std::max(0, std::min(menu.selected - 2, int(menu.items.size()) - visible));
+                const int limit = std::min(int(menu.items.size()), top + visible);
+                v.menu_items.assign(menu.items.begin() + top, menu.items.begin() + limit);
+                v.menu_selected -= top;
+            }
         }
         ui::library(v);
     }
@@ -1122,7 +1205,7 @@ static bool same_file(const char *first_path, const char *second_path, bool via_
     }
 }
 
-static bool copy_file(const char *source, const char *destination, bool verify, bool via_ftp = false)
+static bool copy_file(const char *source, const char *destination, bool verify, bool via_ftp = false, mode_t mode = 0644)
 {
     char pending[800];
     int needed = snprintf(pending, sizeof(pending), "%s.tegelmaker-XXXXXX", destination);
@@ -1135,7 +1218,11 @@ static bool copy_file(const char *source, const char *destination, bool verify, 
     const int fd = mkstemp(pending);
     if (fd < 0)
         return false;
-    fchmod(fd, 0644);
+    if (fchmod(fd, mode) != 0) {
+        close(fd);
+        unlink(pending);
+        return false;
+    }
     FILE *output = fdopen(fd, "wb");
     if (!output) {
         close(fd);
@@ -1469,7 +1556,11 @@ static bool place_tile(const char *title_id, const char *package, const char *ti
     if (result == sys::Install::Failed) {
         // Fall back to GoldHEN's Package Installer.
         char destination[200];
-        snprintf(destination, sizeof(destination), "%s/%s [%s].pkg", Installer, title, title_id);
+        std::string filename(title);
+        for (char &c : filename)
+            if (c == '/' || c == '\\')
+                c = '_';
+        snprintf(destination, sizeof(destination), "%s/%s [%s].pkg", Installer, filename.c_str(), title_id);
         if (stage_package(package, destination, title))
             snprintf(status, sizeof(status), TR("Couldn't install it (%s). Install \"%s\" with GoldHEN Package Installer.", "Zelf installeren lukte niet (%s). Installeer \"%s\" via GoldHEN Package Installer."),
                      error.c_str(), title);
@@ -1630,13 +1721,148 @@ static std::string utf8_cut(std::string text, size_t max)
     return text.substr(0, end);
 }
 
-// Builds this game's tile (emulator: "DLPH00010"-like or "EMSN00001"-like title ID) and installs it.
-static void make_tile(const Game &game, const char *usual_emulator, const char *emulator_name, const char *cover)
+#include "tile/runtimes.h"
+
+static constexpr char DolphinAssets[] = "/app0/tile/dolphin-assets.bin";
+static constexpr char EmuSuNiAssets[] = "/app0/tile/emusuni-assets.bin";
+
+static bool add_emulator_assets(pkgbuild::Project &project, const char *archive, bool dolphin,
+                                const std::vector<std::string> &games)
 {
-    const std::string emulator = find_emulator(usual_emulator, std::string(usual_emulator, 4).c_str());
+    FILE *file = fopen(archive, "rb");
+    if (!file)
+        return false;
+
+    const auto has = [&](const char *id) { return std::find(games.begin(), games.end(), id) != games.end(); };
+    const bool psp = !dolphin && has("psp");
+    const bool arcade = !dolphin && (has("arcade") || has("naomi") || has("atomiswave"));
+    char signature[4];
+    bool ok = fread(signature, 1, sizeof(signature), file) == sizeof(signature) &&
+              !memcmp(signature, "EFDA", sizeof(signature));
+    bool finished = false;
+    while (ok && !finished) {
+        uint32_t size[2];
+        ok = fread(size, sizeof(uint32_t), 2, file) == 2;
+        if (!ok)
+            break;
+        if (size[0] == 0) {
+            finished = size[1] == 0 && fgetc(file) == EOF && !ferror(file);
+            break;
+        }
+        if (size[0] >= 512 || size[1] > 8u * 1024 * 1024)
+            break;
+        std::string name(size[0], '\0');
+        if (fread(name.data(), 1, size[0], file) != size[0])
+            break;
+        static constexpr char GameSettings[] = "Sys/GameSettings/";
+        bool skip = (!dolphin && ((!psp && !name.compare(0, 7, "ppsspp/")) ||
+                                  (!arcade && !name.compare(0, 6, "fbneo/"))));
+        if (dolphin && !name.compare(0, sizeof(GameSettings) - 1, GameSettings)) {
+            const std::string config = name.substr(sizeof(GameSettings) - 1);
+            skip = std::none_of(games.begin(), games.end(), [&](const std::string &id) {
+                return config == id.substr(0, 1) + ".ini" || config == id.substr(0, 3) + ".ini" || config == id + ".ini";
+            });
+        }
+        // Mixed collections share common XMB assets. Dolphin supplies shared paths first.
+        if (!dolphin && !name.compare(0, 4, "xmb/"))
+            skip |= std::any_of(project.files.begin(), project.files.end(), [&](const auto &part) { return part.first == name; });
+        if (skip) {
+            ok = fseek(file, size[1], SEEK_CUR) == 0;
+            continue;
+        }
+        std::vector<uint8_t> data(size[1]);
+        if (size[1] && fread(data.data(), 1, size[1], file) != size[1])
+            break;
+        project.files.push_back({std::move(name), std::move(data)});
+    }
+    fclose(file);
+    return finished;
+}
+
+static pkgbuild::Project tile_project(const std::string &id, const std::string &version,
+                                      const std::string &title, const char *content_name)
+{
+    pkgbuild::Project project;
+    project.content_id = "IV0000-" + id + "_00-" + content_name;  // 36 characters
+    project.timestamp = time(nullptr);
+    char date[16];
+    const time_t now = project.timestamp;
+    strftime(date, sizeof(date), "%Y%m%d", gmtime(&now));
+    project.c_date = date;
+    pkgbuild::Sfo &sfo = project.sfo;
+    sfo.set_int("APP_TYPE", 1);
+    sfo.set_text("APP_VER", version, 8);
+    sfo.set_int("ATTRIBUTE", 0);
+    sfo.set_text("CATEGORY", "gd", 4);
+    sfo.set_text("CONTENT_ID", project.content_id, 48);
+    sfo.set_int("DOWNLOAD_DATA_SIZE", 0);
+    sfo.set_int("SYSTEM_VER", 0);
+    sfo.set_text("TITLE", title, 128);
+    sfo.set_text("TITLE_ID", id, 12);
+    sfo.set_text("VERSION", "01.00", 8);
+    return project;
+}
+
+static bool add_tile_files(pkgbuild::Project &project, bool collection)
+{
+    const struct { const char *from, *to; } parts[] = {
+        {collection ? "/app0/tile/collection.bin" : "/app0/tile/eboot.bin", "eboot.bin"},
+        {"/app0/sce_module/libc.prx", "sce_module/libc.prx"},
+        {"/app0/sce_module/libSceFios2.prx", "sce_module/libSceFios2.prx"},
+        {"/app0/sce_sys/about/right.sprx", "sce_sys/about/right.sprx"},
+    };
+    for (const auto &part : parts) {
+        std::vector<uint8_t> data;
+        if (!read_all(part.from, data)) {
+            snprintf(status, sizeof(status), TR("A part of the tile is missing: %s", "Een deel van de tegel ontbreekt: %s"), part.from);
+            sys::log("tegel: %s ontbreekt", part.from);
+            return false;
+        }
+        project.files.push_back({part.to, std::move(data)});
+    }
+    if (collection) {
+        std::vector<uint8_t> font;
+        if (!read_all("/app0/assets/fonts/Gontserrat-Regular.ttf", font)) {
+            snprintf(status, sizeof(status), "%s", TR("The collection font is missing.", "Het lettertype voor collecties ontbreekt."));
+            return false;
+        }
+        project.files.push_back({"assets/fonts/Gontserrat-Regular.ttf", std::move(font)});
+    }
+    return true;
+}
+
+static bool write_tile_package(const pkgbuild::Project &project, const std::string &id,
+                               const std::string &title, char (&path)[96])
+{
+    snprintf(status, sizeof(status), TR("Building the tile for %s...", "Tegel voor %s bouwen..."), title.c_str());
+    draw();
+    std::vector<uint8_t> package = pkgbuild::build(project);
+    mkdir(TileBuild, 0777);
+    snprintf(path, sizeof(path), "%s/%s.pkg", TileBuild, id.c_str());
+    FILE *out = package.empty() ? nullptr : fopen(path, "wb");
+    bool written = out && fwrite(package.data(), 1, package.size(), out) == package.size();
+    if (out && fclose(out))
+        written = false;
+    sys::log("tegel %s: %zu bytes naar %s%s", id.c_str(), package.size(), path, written ? "" : " MISLUKT");
+    std::vector<uint8_t>().swap(package);
+    if (!written) {
+        unlink(path);
+        snprintf(status, sizeof(status), TR("Couldn't save the tile. Check free space.", "Kan de tegel niet opslaan. Controleer vrije ruimte."));
+        return false;
+    }
+    return true;
+}
+
+// Builds this game's tile (emulator: "DLPH00010"-like or "EMSN00001"-like title ID) and installs it.
+static bool make_tile(const Game &game, const char *usual_emulator, const char *emulator_name, const char *cover)
+{
+    const bool direct_dolphin = !strncmp(usual_emulator, "DLPH", 4) && exists(DolphinAssets);
+    const bool direct_emusuni = !strncmp(usual_emulator, "EMSN", 4) && exists(EmuSuNiAssets) && exists(EF_EMUSUNI_RUNTIME);
+    const std::string emulator = direct_dolphin || direct_emusuni
+        ? usual_emulator : find_emulator(usual_emulator, std::string(usual_emulator, 4).c_str());
     if (emulator.empty()) {
         snprintf(status, sizeof(status), TR("Install %s first: the tile opens it.", "Installeer eerst %s: de tegel opent die."), emulator_name);
-        return;
+        return false;
     }
     // Title ID: the one this game had, else the next free EFWD number.
     OwnTile *tile = own_tile(game);
@@ -1669,60 +1895,36 @@ static void make_tile(const Game &game, const char *usual_emulator, const char *
     if (icon.empty())
         read_all("/app0/tile/icon0.png", icon);
 
-    pkgbuild::Project project;
-    project.content_id = "IV0000-" + id + "_00-EMUFORWARDTILE00";  // 36 characters
-    project.timestamp = time(nullptr);
-    char date[16];
-    const time_t now = project.timestamp;
-    strftime(date, sizeof(date), "%Y%m%d", gmtime(&now));
-    project.c_date = date;
-    pkgbuild::Sfo &sfo = project.sfo;
-    sfo.set_int("APP_TYPE", 1);
-    sfo.set_text("APP_VER", version, 8);
-    sfo.set_int("ATTRIBUTE", 0);
-    sfo.set_text("CATEGORY", "gd", 4);
-    sfo.set_text("CONTENT_ID", project.content_id, 48);
-    sfo.set_int("DOWNLOAD_DATA_SIZE", 0);
-    sfo.set_int("SYSTEM_VER", 0);
-    sfo.set_text("TITLE", title, 128);
-    sfo.set_text("TITLE_ID", id, 12);
-    sfo.set_text("VERSION", "01.00", 8);
-    const struct { const char *from, *to; } parts[] = {
-        {"/app0/tile/eboot.bin", "eboot.bin"},
-        {"/app0/sce_module/libc.prx", "sce_module/libc.prx"},
-        {"/app0/sce_module/libSceFios2.prx", "sce_module/libSceFios2.prx"},
-        {"/app0/sce_sys/about/right.sprx", "sce_sys/about/right.sprx"},
-    };
-    for (const auto &part : parts) {
-        std::vector<uint8_t> data;
-        if (!read_all(part.from, data)) {
-            snprintf(status, sizeof(status), TR("A part of the tile is missing: %s", "Een deel van de tegel ontbreekt: %s"), part.from);
-            sys::log("tegel: %s ontbreekt", part.from);
-            return;
+    pkgbuild::Project project = tile_project(id, version, title, "EMUFORWARDTILE00");
+    if (!add_tile_files(project, false))
+        return false;
+    if (direct_dolphin) {
+        char disc[7];
+        if (!read_disc(game.path, disc) || !add_emulator_assets(project, DolphinAssets, true, {disc})) {
+            snprintf(status, sizeof(status), TR("Couldn't prepare Dolphin's files for this tile.",
+                                                "Kan de Dolphin-bestanden voor deze tegel niet voorbereiden."));
+            return false;
         }
-        project.files.push_back({part.to, std::move(data)});
+        if (!exists(EF_DOLPHIN_RUNTIME) && !copy_file("/app0/tile/dolphin.bin", EF_DOLPHIN_RUNTIME, true, false, 0755)) {
+            snprintf(status, sizeof(status), TR("Couldn't install shared Dolphin. Check free space.",
+                                                "Kan gedeelde Dolphin niet installeren. Controleer de vrije ruimte."));
+            return false;
+        }
+        sys::log("tegel %s: Dolphin start rechtstreeks met %s", id.c_str(), EF_DOLPHIN_RUNTIME);
     }
-    const std::string forward = "emu=" + emulator + "\ngame=" + game.path + "\n";
+    if (direct_emusuni && !add_emulator_assets(project, EmuSuNiAssets, false, {game.system})) {
+        snprintf(status, sizeof(status), TR("Couldn't prepare EmuSuNi's files for this tile.",
+                                            "Kan de EmuSuNi-bestanden voor deze tegel niet voorbereiden."));
+        return false;
+    }
+    const char *launch = direct_dolphin ? "direct=dolphin\n" : direct_emusuni ? "direct=emusuni\n" : "";
+    const std::string forward = "emu=" + emulator + "\ngame=" + game.path + "\n" + launch;
     project.files.push_back({"forward.txt", std::vector<uint8_t>(forward.begin(), forward.end())});
     project.files.push_back({"sce_sys/icon0.png", std::move(icon)});
 
-    snprintf(status, sizeof(status), TR("Building the tile for %s...", "Tegel voor %s bouwen..."), title.c_str());
-    draw();
-    std::vector<uint8_t> package = pkgbuild::build(project);
-    mkdir(TileBuild, 0777);
     char path[96];
-    snprintf(path, sizeof(path), "%s/%s.pkg", TileBuild, id.c_str());
-    FILE *out = fopen(path, "wb");
-    bool written = out && fwrite(package.data(), 1, package.size(), out) == package.size();
-    if (out && fclose(out))
-        written = false;
-    sys::log("tegel %s: %zu bytes naar %s%s", id.c_str(), package.size(), path, written ? "" : " MISLUKT");
-    std::vector<uint8_t>().swap(package);
-    if (!written) {
-        unlink(path);
-        snprintf(status, sizeof(status), TR("Couldn't save the tile. Check free space.", "Kan de tegel niet opslaan. Controleer vrije ruimte."));
-        return;
-    }
+    if (!write_tile_package(project, id, title, path))
+        return false;
     if (tile) {
         tile->version = version;
     } else {
@@ -1739,22 +1941,23 @@ static void make_tile(const Game &game, const char *usual_emulator, const char *
     unlink(path);  // installed (or copied to the installer folder)
     if (placed)
         snprintf(status, sizeof(status), TR("%s is on your home screen. It opens %s.", "%s staat op je home screen. Hij opent %s."), title.c_str(), emulator_name);
-    if (!own_icon)
+    if (placed && !own_icon)
         snprintf(status + strlen(status), sizeof(status) - strlen(status),
                  TR(" No cover found: choose one with Options.", " Geen hoes gevonden: kies er een met Options."));
+    return placed;
 }
 
 // GameCube games outside the catalog: cover from DolphinPS4's covers.
-static void prepare_slot(const Game &game)
+static bool prepare_slot(const Game &game)
 {
     char disc[7];
     if (!read_disc(game.path, disc)) {
         snprintf(status, sizeof(status), TR("This file isn't a readable GameCube disc.", "Dit bestand is geen leesbare GameCube-disc."));
-        return;
+        return false;
     }
     char cover[128];
     snprintf(cover, sizeof(cover), "%s/%s.png", Covers, disc);
-    make_tile(game, "DLPH00010", "DolphinPS4", cover);
+    return make_tile(game, "DLPH00010", "DolphinPS4", cover);
 }
 
 // Retrocade games (NDS, 3DS, GBA, ...): EmuSuNi plays them; cover from EmuSuNi's covers,
@@ -1813,16 +2016,16 @@ static bool ensure_library_folder(const Game &game)
     return true;
 }
 
-static void prepare_retro(const Game &game)
+static bool prepare_retro(const Game &game)
 {
     sys::log("retro: %s", game.path);
     if (!ensure_library_folder(game)) {
         sys::log("retro: gamemap niet toegevoegd: %s", status);
-        return;
+        return false;
     }
     char cover[512];
     const int length = snprintf(cover, sizeof(cover), "%s/%s/%s.png", RetroCovers, game.system, game.name);
-    make_tile(game, "EMSN00001", "EmuSuNi", length > 0 && length < static_cast<int>(sizeof(cover)) ? cover : nullptr);
+    return make_tile(game, "EMSN00001", "EmuSuNi", length > 0 && length < static_cast<int>(sizeof(cover)) ? cover : nullptr);
 }
 
 // The tile that currently plays this game, as title ID; nullptr when it has none yet.
@@ -1833,9 +2036,16 @@ static const char *tile_for(const Game &game, char (&id)[16])
         snprintf(id, sizeof(id), "%s", own->id.c_str());
         return id;
     }
+    // An old tile (before 1.1) only counts while it is installed.
+    auto installed = [](const char *title_id) {
+        sys::Elevated elevated;
+        char app[48];
+        snprintf(app, sizeof(app), "/user/app/%s", title_id);
+        return directory_exists(app);
+    };
     if (game.tile) {
         snprintf(id, sizeof(id), "TGCG%05d", static_cast<int>(game.tile - Catalog) + 1);
-        return id;
+        return installed(id) ? id : nullptr;
     }
     const SlotKind &kind = game.system[0] ? RetroSlots : GameCubeSlots;
     for (int n = 1; n <= Slots; ++n) {
@@ -1843,10 +2053,84 @@ static const char *tile_for(const Game &game, char (&id)[16])
         snprintf(path, sizeof(path), "%s/%s%02d.txt", AppData, kind.file_prefix, n);
         if (read_line(path, current, sizeof(current)) && !strcmp(current, game.path)) {
             snprintf(id, sizeof(id), "%s%05d", kind.app_prefix, n);
-            return id;
+            return installed(id) ? id : nullptr;
         }
     }
     return nullptr;
+}
+
+static constexpr char OldTemplates[] = "/data/PS4Tegelmaker/tiles";
+
+static OldTiles find_old_tiles()
+{
+    OldTiles old;
+    if (DIR *dir = opendir(OldTemplates)) {
+        while (dirent *entry = readdir(dir)) {
+            const size_t length = strlen(entry->d_name);
+            if (length > 4 && !strcasecmp(entry->d_name + length - 4, ".pkg")) {
+                char path[160];
+                snprintf(path, sizeof(path), "%s/%s", OldTemplates, entry->d_name);
+                ++old.templates;
+                old.bytes += std::max(0LL, file_size(path));
+            }
+        }
+        closedir(dir);
+    }
+    sys::Elevated elevated;
+    if (DIR *dir = opendir("/user/app")) {
+        while (dirent *entry = readdir(dir)) {
+            const char *name = entry->d_name;
+            if (strlen(name) == 9 && (!strncmp(name, "TGCG", 4) || !strncmp(name, "TGCU", 4) || !strncmp(name, "TGEM", 4) ||
+                                      !strncmp(name, "TGLT", 4)))
+                old.installed.push_back(name);
+        }
+        closedir(dir);
+    }
+    std::sort(old.installed.begin(), old.installed.end());
+    return old;
+}
+
+// Uninstalls the old tiles the normal way (the PS4's own uninstall) and deletes the old templates.
+static void clean_up_old_tiles()
+{
+    const OldTiles old = find_old_tiles();
+    sys::log("opruimen: %d sjablonen (%lld bytes), %d oude tegels", old.templates, old.bytes, int(old.installed.size()));
+    int removed = 0, failed = 0;
+    for (const std::string &id : old.installed) {
+        snprintf(status, sizeof(status), TR("Uninstalling old tile %s...", "Oude tegel %s verwijderen..."), id.c_str());
+        draw();
+        if (sys::uninstall(id.c_str()))
+            ++removed;
+        else
+            ++failed;
+    }
+    long long freed = 0;
+    if (DIR *dir = opendir(OldTemplates)) {
+        std::vector<std::string> files;
+        while (dirent *entry = readdir(dir))
+            if (entry->d_name[0] != '.')
+                files.push_back(entry->d_name);
+        closedir(dir);
+        for (const std::string &name : files) {
+            char path[160];
+            snprintf(path, sizeof(path), "%s/%s", OldTemplates, name.c_str());
+            const long long size = file_size(path);
+            if (unlink(path) == 0)
+                freed += std::max(0LL, size);
+        }
+        rmdir(OldTemplates);
+    }
+    for (int n = 1; n <= Slots; ++n) {  // which game each old general tile played
+        char path[80];
+        snprintf(path, sizeof(path), "%s/slot%02d.txt", AppData, n);
+        unlink(path);
+        snprintf(path, sizeof(path), "%s/retro-slot%02d.txt", AppData, n);
+        unlink(path);
+    }
+    sys::log("opruimen klaar: %d verwijderd, %d mislukt, %lld bytes vrij", removed, failed, freed);
+    refresh_tiles();
+    snprintf(status, sizeof(status), TR("Cleaned up: %d old tile(s) uninstalled, %.1f GB freed.%s", "Opgeruimd: %d oude tegel(s) verwijderd, %.1f GB vrij.%s"),
+             removed, freed / 1073741824.0, failed ? TR(" Some couldn't be removed: see emuforwarder.log.", " Een paar lukten niet: zie emuforwarder.log.") : "");
 }
 
 // Put every chosen icon on its tile, so a tile installed after choosing gets it too.
@@ -2108,30 +2392,28 @@ static void editor_input(uint32_t pressed, uint32_t held)
     if (held & ORBIS_PAD_BUTTON_R2) { editor.zoom = std::min(8.0f, editor.zoom * 1.02f); editor.dirty = true; }
 }
 
-static void prepare_tile(const Game &game)
+static bool prepare_tile(const Game &game)
 {
-    if (game.system[0]) {
-        prepare_retro(game);
-        return;
-    }
-    if (!game.tile) {
-        prepare_slot(game);
-        return;
-    }
+    if (game.system[0])
+        return prepare_retro(game);
+    if (!game.tile)
+        return prepare_slot(game);
     char disc[7];
     if (!read_disc(game.path, disc) || strcmp(disc, game.tile->disc)) {
         snprintf(status, sizeof(status), TR("This internal file changed. Search for games again.", "Dit interne bestand is gewijzigd. Zoek de games opnieuw."));
-        return;
+        return false;
     }
     if (!assign(game)) {
         snprintf(status, sizeof(status), TR("Couldn't save the path to the internal game.", "Kan het pad naar de interne game niet opslaan."));
-        return;
+        return false;
     }
 
     char cover[128];
     snprintf(cover, sizeof(cover), "%s/%s.png", Covers, disc);
-    make_tile(game, "DLPH00010", "DolphinPS4", cover);
+    return make_tile(game, "DLPH00010", "DolphinPS4", cover);
 }
+
+#include "collection_builder.h"
 
 // Back to the cover the emulator has (also on the tile, when it is installed).
 static void reset_icon(const Game &game)
@@ -2368,6 +2650,28 @@ static int ef_app_main()
             if (total)
                 snprintf(keep, sizeof(keep), "%s", games[selected].path);
             scan(keep[0] ? keep : nullptr);
+            marked_paths.erase(std::remove_if(marked_paths.begin(), marked_paths.end(), [](const std::string &path) {
+                return !find_marked_game(path);
+            }), marked_paths.end());
+        }
+        if (pressed & ORBIS_PAD_BUTTON_L2) {
+            multi_select = !multi_select;
+            marked_paths.clear();
+            reset_collection_draft();
+            exit_armed = 0;
+        }
+        if (multi_select) {
+            if (pressed & ORBIS_PAD_BUTTON_CIRCLE) {
+                multi_select = false;
+                marked_paths.clear();
+                reset_collection_draft();
+            } else if (pressed & ORBIS_PAD_BUTTON_OPTIONS) {
+                open_selection_menu();
+            } else if (!view.empty() && (pressed & ORBIS_PAD_BUTTON_CROSS)) {
+                toggle_mark(games[selected]);
+            }
+            present();
+            continue;
         }
         if (total && (pressed & ORBIS_PAD_BUTTON_CROSS))
             open_menu();

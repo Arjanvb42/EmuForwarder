@@ -142,7 +142,7 @@ static std::string package_path(const std::string &version)
 static bool download(std::string &error)
 {
     std::vector<uint8_t> package;
-    const int status = online::get(std::string(Base) + "EmuForwarder.pkg", {}, package, 64 * 1024 * 1024);
+    const int status = online::get(std::string(Base) + "EmuForwarder.pkg", {}, package, 104 * 1024 * 1024);
     if (status != 200) {
         error = status < 0 ? TR("download failed", "downloaden mislukt") : TR("GitHub answered ", "GitHub antwoordde ") + std::to_string(status);
         return false;

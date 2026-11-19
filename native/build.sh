@@ -116,6 +116,23 @@ cc -Wall -Wextra -Werror -c "$native/tile/forwarder.c" -o "$objects/forwarder.o"
 "$bin/create-fself" -in "$objects/forwarder.elf" -out "$objects/forwarder.oelf" \
     --eboot "$stage/tile/eboot.bin" --paid 0x3800000000000011
 cp "$native/icons/tile.png" "$stage/tile/icon0.png"
+cc -Wall -Wextra -Werror -DEF_COLLECTION -c "$native/tile/forwarder.c" -o "$objects/collection-forwarder.o"
+cxx "$native/tile/collection.cpp" "$objects/collection.o"
+link "$objects/collection.elf" "$objects/collection.o" "$objects/collection-forwarder.o" "$objects/graphics.o"
+"$bin/create-fself" -in "$objects/collection.elf" -out "$objects/collection.oelf" \
+    --eboot "$stage/tile/collection.bin" --paid 0x3800000000000011
+if [[ -n ${DOLPHIN_TILE_SOURCE:-} ]]; then
+    dolphin=$(realpath "$DOLPHIN_TILE_SOURCE")
+    test "$(cat "$dolphin/xmb/version.txt")" = 04.19
+    test -f "$dolphin/Sys/totaldb.dsy"
+    cp "$dolphin/eboot.bin" "$stage/tile/dolphin.bin"
+    python3 "$native/tile/pack_emulator_assets.py" "$dolphin" "$stage/tile/dolphin-assets.bin" Sys xmb
+fi
+if [[ -n ${EMUSUNI_TILE_SOURCE:-} ]]; then
+    emusuni=$(realpath "$EMUSUNI_TILE_SOURCE")
+    test -f "$emusuni/xmb/assets.zip"
+    python3 "$native/tile/pack_emulator_assets.py" "$emusuni" "$stage/tile/emusuni-assets.bin" xmb ppsspp fbneo
+fi
 link "$objects/app.elf" "$objects/main.o" "$objects/crash.o" "$objects/graphics.o" "$objects/sqlite3.o" "$objects/vorbis.o"
 cp "$objects/app.elf" "$out/app.elf"
 "$bin/create-fself" -in "$objects/app.elf" -out "$objects/app.oelf" \

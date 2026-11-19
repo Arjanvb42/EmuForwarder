@@ -1,10 +1,6 @@
 #include "lang.h"
-// EFUpdater (TGMA00002): installs a downloaded EmuForwarder package over the installed
-// app. EmuForwarder can't do that itself: the PS4 only installs a full package after the old one is
-// removed, and an app can't remove itself while it runs. (A patch package, like a game update,
-// would install over it, but the toolchain builds patches the PS4 refuses: "unable to install
-// update", 2026-11-18.) This app removes the old EmuForwarder and installs the new one, the same way
-// EmuForwarder installs its tiles. Your data in /data/PS4Tegelmaker stays.
+// EFUpdater installs EmuForwarder updates. It runs as a separate
+// app because a full package can only replace an installation after the old app is closed.
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
@@ -19,6 +15,7 @@
 
 #include "graphics.h"
 #include "system.h"
+#include "ui.h"
 
 #define STBI_ONLY_PNG
 #define STB_IMAGE_IMPLEMENTATION
@@ -28,29 +25,57 @@
 #include <sstream>
 std::stringstream debugLogStream;  // used by graphics.cpp (OpenOrbis sample code)
 
-static Scene2D *scene;
-static FT_Face font_title, font_body;
-static int frame;
-static const Color Background{14, 16, 26}, Text{235, 238, 245}, Dim{150, 156, 175}, Accent{90, 170, 255};
+extern "C" {
+int ef_last_rect[4]{};
+}
 
-static void show(const char *title, const char *line1, const char *line2 = "", int percent = -1)
+static Scene2D *scene;
+static int frame;
+
+enum class UpdateScreen { Searching, Installing, Done, NoUpdate, Failed };
+
+static void show(UpdateScreen screen, const char *title, const char *message, const char *detail = "", int percent = 0)
 {
-    scene->DrawRectangle(0, 0, 1920, 1080, Background);
-    scene->DrawText(const_cast<char *>("EFUpdater"), font_body, 160, 200, Background, Dim);
-    scene->DrawText(const_cast<char *>(title), font_title, 160, 330, Background, Text);
-    scene->DrawText(const_cast<char *>(line1), font_body, 160, 440, Background, Text);
-    scene->DrawText(const_cast<char *>(line2), font_body, 160, 500, Background, Dim);
-    if (percent >= 0) {
-        scene->DrawRectangle(160, 580, 1600, 16, Color{40, 44, 60});
-        scene->DrawRectangle(160, 580, 16 * std::min(percent, 100), 16, Accent);
+    ui::canvas = scene->Pixels();
+    ui::background();
+    ui::header("EFUpdater", "EmuForwarder", nullptr, "v" EF_UPDATER_VERSION);
+
+    constexpr int x = 456, y = 300, w = 1008, h = 428, inset = 52;
+    const Color edge = screen == UpdateScreen::Done ? ui::Good :
+                       screen == UpdateScreen::Failed ? ui::Warn : ui::Accent;
+    ui::round_rect(x - 4, y - 4, w + 8, h + 8, 34, edge, ui::background_at(y));
+    ui::round_rect(x, y, w, h, 30, ui::Card, edge);
+    ui::text(title, ui::font_title, x + inset, y + 96, x + w - inset, ui::Card, ui::Text, true);
+
+    int baseline = y + 166;
+    for (const std::string &line : ui::wrap(message, ui::font_large, w - 2 * inset)) {
+        ui::text(line.c_str(), ui::font_large, x + inset, baseline, x + w - inset, ui::Card, ui::Text);
+        baseline += 45;
     }
+
+    if (screen == UpdateScreen::Installing) {
+        constexpr int bar_w = w - 2 * inset;
+        const int progress = std::max(0, std::min(percent, 100));
+        ui::round_rect(x + inset, y + 280, bar_w, 14, 7, ui::Line, ui::Card);
+        if (progress)
+            ui::round_rect(x + inset, y + 280, bar_w * progress / 100, 14, 7, ui::Accent, ui::Line);
+        char label[8];
+        snprintf(label, sizeof(label), "%d%%", progress);
+        ui::text(label, ui::font_body, x + inset, y + 337, x + w - inset, ui::Card, ui::Sub);
+    } else if (*detail) {
+        ui::text(detail, ui::font_body, x + inset, y + 337, x + w - inset, ui::Card, ui::Sub);
+    }
+
     scene->SubmitFlip(frame);
     scene->FrameWait(frame);
     scene->FrameBufferSwap();
     ++frame;
 }
 
-// The newest full EmuForwarder package in /data/pkg ("EmuForwarder-v0.26.pkg").
+static constexpr char TitleId[] = "TGMA00001";
+static constexpr char ContentId[] = "IV0000-TGMA00001_00-TEGELMAKERPS4000";
+static constexpr char PackagePrefix[] = "EmuForwarder-v";
+
 static std::string newest_package(std::string &version)
 {
     std::string best;
@@ -60,9 +85,9 @@ static std::string newest_package(std::string &version)
     while (dirent *entry = readdir(dir)) {
         const char *name = entry->d_name;
         const size_t length = strlen(name);
-        if (strncmp(name, "EmuForwarder-v", 14) || length < 5 || strcmp(name + length - 4, ".pkg") || strstr(name, "-update"))
+        if (strncmp(name, PackagePrefix, sizeof(PackagePrefix) - 1) || length < 5 || strcmp(name + length - 4, ".pkg") || strstr(name, "-update"))
             continue;
-        const std::string path = std::string("/data/pkg/") + name, have = sys::package_version(path.c_str());
+        const std::string path = std::string("/data/pkg/") + name, have = sys::package_version(path.c_str(), ContentId);
         if (!have.empty() && have > version) {
             version = have;
             best = path;
@@ -95,7 +120,8 @@ int main()
         return 1;
     scene->SetActiveFrameBuffer(0);
     const char *font = "/app0/assets/fonts/Gontserrat-Regular.ttf";
-    if (!scene->InitFont(&font_title, font, 58) || !scene->InitFont(&font_body, font, 30))
+    if (!scene->InitFont(&ui::font_title, font, 58) || !scene->InitFont(&ui::font_large, font, 36) ||
+        !scene->InitFont(&ui::font_body, font, 28))
         return 1;
     sceUserServiceInitialize(NULL);
     int32_t user = -1;
@@ -115,40 +141,45 @@ int main()
             OrbisPadData input{};
             return scePadReadState(pad, &input) >= 0 && (input.buttons & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE));
         });
-    show(TR("Searching...", "Zoeken..."), TR("For a new EmuForwarder in /data/pkg", "Naar een nieuwe EmuForwarder in /data/pkg"));
+    show(UpdateScreen::Searching, TR("Searching...", "Zoeken..."), TR("For updates in /data/pkg", "Naar updates in /data/pkg"));
 
-    std::string version;
+    const std::string installed = sys::installed_version(TitleId);
+    std::string version = installed;
     std::string package;
     {
-        sys::Elevated elevated;  // for the installed version (system_data)
+        sys::Elevated elevated;
         package = newest_package(version);
     }
-    const std::string installed = sys::installed_version("TGMA00001");
-    sys::log("updater: pakket %s (%s), geinstalleerd %s", package.c_str(), version.c_str(), installed.c_str());
-    if (package.empty() || (!installed.empty() && installed >= version)) {
-        show(TR("No update", "Geen update"), TR("There's no newer EmuForwarder in /data/pkg.", "Er staat geen nieuwere EmuForwarder in /data/pkg."),
-             TR("In EmuForwarder: Square > Settings > check for updates.  X = close", "Kies in EmuForwarder: Vierkant > Instellingen > updates zoeken.  X = sluiten"));
+    if (package.empty()) {
+        show(UpdateScreen::NoUpdate, TR("No update", "Geen update"), TR("No newer package in /data/pkg.", "Er staat geen nieuwer pakket in /data/pkg."),
+             TR("X = close", "X = sluiten"));
         wait_for_cross(pad);
         sceSystemServiceLoadExec("exit", NULL);
         return 0;
     }
+    sys::log("updater: pakket %s (%s), geinstalleerd %s", package.c_str(), version.c_str(), installed.c_str());
     char line[160];
-    snprintf(line, sizeof(line), TR("From %s to %s. Close EmuForwarder if it's still open.", "Van %s naar %s. Sluit EmuForwarder als hij nog open staat."),
+    snprintf(line, sizeof(line), "%s %s > %s", "EmuForwarder",
              installed.empty() ? "-" : installed.c_str(), version.c_str());
-    show(TR("Updating EmuForwarder", "EmuForwarder bijwerken"), line, "", 0);
+    const char *updating = TR("Installing update", "Update installeren");
+    show(UpdateScreen::Installing, updating, line, "", 0);
     std::string error;
-    const sys::Install result = sys::install(package.c_str(), "TGMA00001", "EmuForwarder", error, [&](int percent) {
-        show(TR("Updating EmuForwarder", "EmuForwarder bijwerken"), line, "", percent);
+    const sys::Install result = sys::install(package.c_str(), TitleId, "EmuForwarder", error, [&](int percent) {
+        show(UpdateScreen::Installing, updating, line, "", percent);
     });
-    const std::string now = sys::installed_version("TGMA00001");
+    const std::string now = sys::installed_version(TitleId);
     sys::log("updater: resultaat %d (%s), nu %s", int(result), error.c_str(), now.c_str());
     if (result == sys::Install::Done && now == version) {
         unlink(package.c_str());
-        show(TR("Done!", "Klaar!"), TR("EmuForwarder is updated. Your settings, icons and music are kept.", "EmuForwarder is bijgewerkt. Je instellingen, iconen en muziek zijn bewaard."),
-             TR("X = close, then start EmuForwarder from your home screen", "X = sluiten, en start EmuForwarder op je home screen"));
+        snprintf(line, sizeof(line), TR("%s is updated.", "%s is bijgewerkt."), "EmuForwarder");
+        show(UpdateScreen::Done, TR("Done!", "Klaar!"), line,
+             TR("Returning to the home screen...", "Terug naar het beginscherm..."));
+        usleep(1500 * 1000);
+        sceSystemServiceLoadExec("exit", NULL);
+        return 0;
     } else {
         snprintf(line, sizeof(line), TR("Update failed%s%s.", "Bijwerken lukte niet%s%s."), error.empty() ? "" : ": ", error.c_str());
-        show(TR("Didn't work", "Niet gelukt"), line, TR("The package is still in /data/pkg (GoldHEN > Package Installer works too).  X = close", "Het pakket staat nog in /data/pkg (GoldHEN > Package Installer kan ook).  X = sluiten"));
+        show(UpdateScreen::Failed, TR("Didn't work", "Niet gelukt"), line, TR("The package is still in /data/pkg. X = close", "Het pakket staat nog in /data/pkg. X = sluiten"));
     }
     wait_for_cross(pad);
     sceSystemServiceLoadExec("exit", NULL);

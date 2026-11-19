@@ -1,12 +1,14 @@
-// The program inside every tile EmuForwarder builds (no emulator inside: about 6 MB).
+// The starter inside each tile. GameCube tiles can load a shared Dolphin executable.
 // It reads /app0/forward.txt, tells the installed emulator which game to start and opens it:
 //   emu=DLPH00010   DolphinPS4 (title ID as installed): the game path goes to /data/DolphinPS4/launch.txt
 //   emu=EMSN00001   EmuSuNi (any EMSN title ID): start-again.txt with why/title/console/game/attempt
 //   game=<path of the game>
-// The PS4 asks to close the tile first (sceSystemServiceLaunchApp always does), then the emulator starts.
+// Configurations with direct=dolphin start the shared executable inside the tile.
 #include <orbis/SystemService.h>
 #include <orbis/UserService.h>
 #include <orbis/libkernel.h>
+
+#include "runtimes.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -79,6 +81,117 @@ static bool write_file(const char *path, const char *text)
     return true;
 }
 
+static int launch_dolphin(const char *game)
+{
+    FILE *source = fopen(EF_DOLPHIN_RUNTIME, "rb");
+    if (!source)
+        return fail("Shared Dolphin is missing. Update the tile in EmuForwarder.",
+                    "Gedeelde Dolphin ontbreekt. Werk de tegel bij in EmuForwarder.", errno);
+    fclose(source);
+    mkdir("/data/DolphinPS4", 0777);
+    // A cancelled launch can leave a request behind. Replace it atomically with this tile's game.
+    char line[1040];
+    snprintf(line, sizeof(line), "%s\n", game);
+    if (!write_file(EF_DOLPHIN_REQUEST, line))
+        return fail("Couldn't save the Dolphin launch request.",
+                    "Kan de Dolphin-startopdracht niet opslaan.", 0);
+
+    log_line("direct: DolphinPS4");
+    sceSystemServiceHideSplashScreen();
+    const int32_t rc = sceSystemServiceLoadExec(EF_DOLPHIN_RUNTIME, NULL);
+    unlink(EF_DOLPHIN_REQUEST);
+    return fail("Couldn't start shared Dolphin.", "Kan gedeelde Dolphin niet starten.", (uint32_t)rc);
+}
+
+#ifndef EF_COLLECTION
+static bool emusuni_finishing_restart(void)
+{
+    FILE *file = fopen(EF_EMUSUNI_REQUEST, "r");
+    if (!file)
+        return false;
+    char request[1536], why[32];
+    request[fread(request, 1, sizeof(request) - 1, file)] = 0;
+    fclose(file);
+    return read_value(request, "why", why, sizeof(why)) &&
+           (!strcmp(why, "stuck-again") || !strcmp(why, "crash-again") || !strncmp(why, "end-", 4));
+}
+
+#endif
+
+static int launch_emusuni(const char *game, bool keep_request)
+{
+    FILE *source = fopen(EF_EMUSUNI_RUNTIME, "rb");
+    if (!source)
+        return fail("Shared EmuSuNi is missing. Update the tile in EmuForwarder.",
+                    "Gedeelde EmuSuNi ontbreekt. Werk de tegel bij in EmuForwarder.", errno);
+    fclose(source);
+
+    // If the watchdog restarted this tile with a terminal failure, let EmuSuNi show it.
+    const bool wrote_request = !keep_request;
+    if (wrote_request) {
+        const char *filename = strrchr(game, '/');
+        char request[1536];
+        snprintf(request, sizeof(request), "why=stuck\ntitle=%s\ngame=%s\nattempt=1\n",
+                 filename ? filename + 1 : game, game);
+        if (!write_file(EF_EMUSUNI_REQUEST, request))
+            return fail("Couldn't save the EmuSuNi launch request.",
+                        "Kan de EmuSuNi-startopdracht niet opslaan.", 0);
+    }
+
+    log_line("direct: EmuSuNi");
+    sceSystemServiceHideSplashScreen();
+    const int32_t rc = sceSystemServiceLoadExec(EF_EMUSUNI_RUNTIME, NULL);
+    if (wrote_request)
+        unlink(EF_EMUSUNI_REQUEST);
+    return fail("Couldn't start shared EmuSuNi.", "Kan gedeelde EmuSuNi niet starten.", (uint32_t)rc);
+}
+
+#ifdef EF_COLLECTION
+static const char CollectionRun[] = "/data/PS4Tegelmaker/collection-run.txt";
+
+int ef_launch_collection(const char *system, const char *game, const char *id, bool use_dutch)
+{
+    dutch = use_dutch;
+    log_line(game);
+    if (!strcmp(system, "gamecube")) {
+        unlink(CollectionRun);
+        return launch_dolphin(game);
+    }
+
+    char context[1050];
+    snprintf(context, sizeof(context), "id=%s\ngame=%s\n", id, game);
+    write_file(CollectionRun, context);
+    return launch_emusuni(game, false);
+}
+
+void ef_resume_collection(const char *id, bool use_dutch)
+{
+    char context[1050], owner[16], game[1024];
+    FILE *file = fopen(CollectionRun, "r");
+    if (!file)
+        return;
+    context[fread(context, 1, sizeof(context) - 1, file)] = 0;
+    fclose(file);
+    if (!read_value(context, "id", owner, sizeof(owner)) || strcmp(id, owner))
+        return;
+    unlink(CollectionRun);
+    file = fopen(EF_EMUSUNI_REQUEST, "r");
+    if (!file)
+        return;
+    char request[1536], pending[1024], console[32];
+    request[fread(request, 1, sizeof(request) - 1, file)] = 0;
+    fclose(file);
+    // A watchdog retry has a console and the same path. Manual requests made by this tile have neither a
+    // retry marker nor a console field. Terminal notifications belong to the last launch and expire here.
+    if (read_value(request, "game", pending, sizeof(pending)) &&
+        read_value(context, "game", game, sizeof(game)) && !strcmp(game, pending) &&
+        read_value(request, "console", console, sizeof(console))) {
+        dutch = use_dutch;
+        write_file(CollectionRun, context);
+        launch_emusuni(game, true);
+    }
+}
+#else
 // GoldHEN's jailbreak call (as in the launch test that worked on the PS4)
 long ef_sc(long num, ...);
 __asm__(".text\n.globl ef_sc\nef_sc:\n  movq $0, %rax\n  movq %rcx, %r10\n  syscall\n  jb 1f\n  retq\n1:\n  movq $-1, %rax\n  retq\n");
@@ -107,6 +220,14 @@ int main(void)
     if (stat(game, &st) != 0)
         return fail("The game is missing. Make the tile again in EmuForwarder.", "De game ontbreekt. Maak de tegel opnieuw in EmuForwarder.", 0);
 
+    char direct[16];
+    if (read_value(config, "direct", direct, sizeof(direct))) {
+        if (!strcmp(direct, "dolphin"))
+            return launch_dolphin(game);
+        if (!strcmp(direct, "emusuni"))
+            return launch_emusuni(game, emusuni_finishing_restart());
+    }
+
     if (!strncmp(emu, "EMSN", 4)) {
         // EmuSuNi starts a game at once from start-again.txt; the game must be in its library
         // (EmuForwarder adds the folder). Title and console come from .../<console>/<title>.<ext>.
@@ -133,7 +254,7 @@ int main(void)
         mkdir("/data/DolphinPS4", 0777);
         char request[1040];
         snprintf(request, sizeof(request), "%s\n", game);
-        if (!write_file("/data/DolphinPS4/launch.txt", request))
+        if (!write_file(EF_DOLPHIN_REQUEST, request))
             return fail("Couldn't save the start request for DolphinPS4.", "Kan de startopdracht voor DolphinPS4 niet opslaan.", 0);
     }
 
@@ -163,7 +284,7 @@ int main(void)
     // 0x80940010: the PS4 asks to close this tile first, then starts the emulator.
     if (rc != 0 && (uint32_t)rc != 0x80940010u) {
         // Not started: don't leave a request that the emulator would act on the next time it opens.
-        unlink(strncmp(emu, "EMSN", 4) ? "/data/DolphinPS4/launch.txt" : "/data/EmuSuNi/start-again.txt");
+        unlink(strncmp(emu, "EMSN", 4) ? EF_DOLPHIN_REQUEST : "/data/EmuSuNi/start-again.txt");
         if (!strncmp(emu, "EMSN", 4))
             return fail("Couldn't open EmuSuNi. Is it installed?", "Kan EmuSuNi niet openen. Is het geinstalleerd?", (uint32_t)rc);
         return fail("Couldn't open DolphinPS4. Is it installed?", "Kan DolphinPS4 niet openen. Is het geinstalleerd?", (uint32_t)rc);
@@ -171,3 +292,5 @@ int main(void)
     sceSystemServiceLoadExec("exit", NULL);
     return 0;
 }
+
+#endif

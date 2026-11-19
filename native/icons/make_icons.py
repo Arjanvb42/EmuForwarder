@@ -3,7 +3,7 @@
 near-black tile filled to the edges, crisp light-grey shapes, one accent colour with a gradient,
 no glow. Each icon has a small illustration and its name written out.
 
-  EmuForwarder  blue:   a game (pixel invader) -> arrow -> home-screen tiles (one lit)
+  EmuForwarder  blue:   pixel invader in a framed tile with a forward arrow
   EFUpdater     orange: the invader inside two turning arrows (update)
 
   python3 make_icons.py   ->  emuforwarder.png, efupdater.png next to this script
@@ -158,31 +158,14 @@ class Layers:
 
 
 def forwarder(layers):
-    accent = gradient((56, 196, 240), (18, 104, 205))
-    # the game: a card with the invader
+    accent = gradient((79, 194, 247), (27, 106, 219))
     card = layers("card")
-    framed(card, (230, 380, 830, 1080), 90)
+    framed(card, (552, 299, 1496, 1198), 138, 45)
     inv, di = new_mask()
-    invader(di, 530 - 5.5 * 40, 730 - 4 * 40, 40)
+    invader(di, 1024 - 5.5 * 47, 690 - 4 * 47, 47)
     paint(card, inv, GREY)
-    # the home screen: a panel with tiles, one lit in the accent colour
-    panel = (1220, 300, 1820, 1160)          # same centre height as the card (730)
-    edge, margin, gap = 40, 58, 46
-    framed(layers("panel"), panel, 90, edge)
-    tiles, dt = new_mask()
-    lit, dl = new_mask()
-    inner_x, inner_y = panel[0] + edge + margin, panel[1] + edge + margin
-    tile_w = (panel[2] - panel[0] - 2 * (edge + margin) - gap) / 2
-    tile_h = (panel[3] - panel[1] - 2 * (edge + margin) - 2 * gap) / 3
-    for r in range(3):
-        for c in range(2):
-            x, y = inner_x + c * (tile_w + gap), inner_y + r * (tile_h + gap)
-            (dl if (r, c) == (0, 1) else dt).rounded_rectangle((x, y, x + tile_w, y + tile_h), radius=30, fill=255)
-    paint(layers("panel"), tiles, DARK_TILE)
-    paint(layers("lit"), lit, accent)
-    # the arrow from the game to the tiles: straight across, in the middle of the gap
     arrow, da = new_mask()
-    straight_arrow(da, (885, 730), (1170, 730), 70, 150, 190)
+    straight_arrow(da, (1024, 910), (1024, 1256), 120, 150, 270)
     paint(layers("arrow"), arrow, accent)
     title(layers("title"), layers("subtitle"), "Emu", "Forwarder", "EMULATOR FORWARDER", accent)
 
